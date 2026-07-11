@@ -259,11 +259,9 @@ export default function App() {
             <span className="symbol">{currentStock.symbol}</span>
             <span className="name">{currentStock.name}</span>
             <span ref={priceRef} className="price">--</span>
-            <span ref={changeRef} className="change"
-              style={{ minWidth: 80 }}>
-              {' '}
-              <span ref={changePctRef} style={{ fontSize: 13 }}></span>
+            <span ref={changeRef} className="change" style={{ minWidth: 80 }}>
             </span>
+            <span ref={changePctRef} style={{ fontSize: 13, minWidth: 60, display: 'inline-block' }}></span>
             <span ref={crosshairTimeRef}
               style={{ fontSize: 12, color: 'var(--text-muted)', whiteSpace: 'nowrap', display: 'none' }}>
             </span>
