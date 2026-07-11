@@ -55,7 +55,7 @@ def get_kline(symbol):
     
     if use_qfq:
         rows = cur.execute(
-            """SELECT date, open, high, low, close, close_qfq, volume, turnover
+            """SELECT date, open_qfq, high_qfq, low_qfq, close_qfq, volume, turnover
                FROM stock_daily 
                WHERE symbol = ? AND close_qfq IS NOT NULL AND close > 0
                ORDER BY date DESC LIMIT ?""",
@@ -74,26 +74,26 @@ def get_kline(symbol):
     
     kline = []
     for r in reversed(rows):
-        if use_qfq and r["close_qfq"] and r["close"] and r["close"] > 0:
-            ratio = r["close_qfq"] / r["close"]
-            ohlc_open = r["open"] * ratio
-            ohlc_high = r["high"] * ratio
-            ohlc_low = r["low"] * ratio
-            ohlc_close = r["close_qfq"]
+        if use_qfq and r["close_qfq"] and r["close_qfq"] > 0:
+            kline.append({
+                "time": r["date"],
+                "open": round(r["open_qfq"], 2) if r["open_qfq"] else 0,
+                "high": round(r["high_qfq"], 2) if r["high_qfq"] else 0,
+                "low": round(r["low_qfq"], 2) if r["low_qfq"] else 0,
+                "close": round(r["close_qfq"], 2),
+                "volume": r["volume"],
+                "turnover": r["turnover"] if r["turnover"] else 0,
+            })
         else:
-            ohlc_open = r["open"]
-            ohlc_high = r["high"]
-            ohlc_low = r["low"]
-            ohlc_close = r["close"]
-        kline.append({
-            "time": r["date"],
-            "open": round(ohlc_open, 2),
-            "high": round(ohlc_high, 2),
-            "low": round(ohlc_low, 2),
-            "close": round(ohlc_close, 2),
-            "volume": r["volume"],
-            "turnover": r["turnover"] if r["turnover"] else 0,
-        })
+            kline.append({
+                "time": r["date"],
+                "open": round(r["open"], 2),
+                "high": round(r["high"], 2),
+                "low": round(r["low"], 2),
+                "close": round(r["close"], 2),
+                "volume": r["volume"],
+                "turnover": r["turnover"] if r["turnover"] else 0,
+            })
     
     # Get signal markers from daily_picks (both local and trend_picks)
     signals = _get_stock_signals(symbol)

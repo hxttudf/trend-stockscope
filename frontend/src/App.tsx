@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react'
-import Chart from './components/Chart'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import Chart, { CrosshairInfo } from './components/Chart'
 import {
   KlineData, Signal, PickRecord, WatchlistItem,
   searchStocks, getKline, getStockInfo, getPicks, getPickDates,
@@ -14,6 +14,8 @@ const RANGES = [
   { label: '全部', days: 9999 },
 ]
 
+const fmtVol = (v: number) => v >= 10000 ? (v / 10000).toFixed(2) + '万' : v.toFixed(0)
+
 interface StockInfo {
   symbol: string
   name: string
@@ -27,7 +29,6 @@ export default function App() {
   const [currentStock, setCurrentStock] = useState<StockInfo | null>(null)
   const [kline, setKline] = useState<KlineData | null>(null)
   const [signals, setSignals] = useState<Signal[]>([])
-  const [crosshairData, setCrosshairData] = useState<{ time: string; open: number; high: number; low: number; close: number; prevClose: number } | null>(null)
   const [range, setRange] = useState(RANGES[2]) // default 6m
   const [qfq, setQfq] = useState(true)
 
@@ -36,6 +37,18 @@ export default function App() {
   const [pickDates, setPickDates] = useState<{ date: string; total: number }[]>([])
   const [selectedPickDate, setSelectedPickDate] = useState('')
   const [sidebarTab, setSidebarTab] = useState<'watchlist' | 'picks'>('watchlist')
+
+  // ── Refs for crosshair direct-DOM updates (no react state re-render) ──
+  const priceRef = useRef<HTMLSpanElement>(null)
+  const changeRef = useRef<HTMLSpanElement>(null)
+  const changePctRef = useRef<HTMLSpanElement>(null)
+  const crosshairTimeRef = useRef<HTMLSpanElement>(null)
+  const extraOpenRef = useRef<HTMLSpanElement>(null)
+  const extraHighRef = useRef<HTMLSpanElement>(null)
+  const extraLowRef = useRef<HTMLSpanElement>(null)
+  const extraVolRef = useRef<HTMLSpanElement>(null)
+  // Store last candle values to reset crosshair display
+  const lastCandleRef = useRef<{ close: number; open: number; high: number; low: number; volume: number; prevClose: number; change: number; changePct: number } | null>(null)
 
   // Load watchlist and pick dates on mount
   useEffect(() => {
@@ -52,7 +65,7 @@ export default function App() {
   useEffect(() => {
     let cancelled = false
     if (selectedPickDate) {
-      setPicks([]) // 先清空再加载，避免残留
+      setPicks([])
       getPicks(selectedPickDate).then(data => {
         if (!cancelled) setPicks(data)
       })
@@ -68,8 +81,78 @@ export default function App() {
     const data = await getKline(symbol, qfq, 600)
     setKline(data)
     setSignals(data.signals)
-    setCrosshairData(null)
   }, [qfq])
+
+  // Update refs when kline data loads (update static display + cache last candle)
+  useEffect(() => {
+    if (!kline?.kline?.length) return
+    const arr = kline.kline
+    const last = arr[arr.length - 1]
+    const prev = arr.length > 1 ? arr[arr.length - 2] : null
+    const change = last.close - (prev?.close ?? last.close)
+    const changePct = prev?.close ? (change / prev.close * 100) : 0
+
+    lastCandleRef.current = {
+      close: last.close, open: last.open, high: last.high, low: last.low,
+      volume: last.volume, prevClose: prev?.close ?? last.close,
+      change, changePct,
+    }
+
+    // Update displayed values
+    if (priceRef.current) priceRef.current.textContent = last.close.toFixed(2)
+    if (changeRef.current) {
+      changeRef.current.textContent = (change >= 0 ? '+' : '') + change.toFixed(2)
+      changeRef.current.className = `change ${change >= 0 ? 'up' : 'down'}`
+    }
+    if (changePctRef.current) {
+      changePctRef.current.textContent = (changePct >= 0 ? '+' : '') + changePct.toFixed(2) + '%'
+    }
+    if (crosshairTimeRef.current) crosshairTimeRef.current.style.display = 'none'
+    if (extraOpenRef.current) extraOpenRef.current.textContent = last.open.toFixed(2)
+    if (extraHighRef.current) extraHighRef.current.textContent = last.high.toFixed(2)
+    if (extraLowRef.current) extraLowRef.current.textContent = last.low.toFixed(2)
+    if (extraVolRef.current) extraVolRef.current.textContent = fmtVol(last.volume)
+  }, [kline])
+
+  // Crosshair handler — directly updates DOM, no React state involved
+  const handleCrosshairMove = useCallback((data: CrosshairInfo | null) => {
+    const lc = lastCandleRef.current
+    if (data && lc) {
+      const change = data.close - data.prevClose
+      const changePct = data.prevClose ? (change / data.prevClose * 100) : 0
+      if (priceRef.current) priceRef.current.textContent = data.close.toFixed(2)
+      if (changeRef.current) {
+        changeRef.current.textContent = (change >= 0 ? '+' : '') + change.toFixed(2)
+        changeRef.current.className = `change ${change >= 0 ? 'up' : 'down'}`
+      }
+      if (changePctRef.current) {
+        changePctRef.current.textContent = (changePct >= 0 ? '+' : '') + changePct.toFixed(2) + '%'
+      }
+      if (crosshairTimeRef.current) {
+        crosshairTimeRef.current.textContent = data.time
+        crosshairTimeRef.current.style.display = ''
+      }
+      if (extraOpenRef.current) extraOpenRef.current.textContent = data.open.toFixed(2)
+      if (extraHighRef.current) extraHighRef.current.textContent = data.high.toFixed(2)
+      if (extraLowRef.current) extraLowRef.current.textContent = data.low.toFixed(2)
+      if (extraVolRef.current) extraVolRef.current.textContent = fmtVol(data.volume)
+    } else if (lc) {
+      // Reset to last candle
+      if (priceRef.current) priceRef.current.textContent = lc.close.toFixed(2)
+      if (changeRef.current) {
+        changeRef.current.textContent = (lc.change >= 0 ? '+' : '') + lc.change.toFixed(2)
+        changeRef.current.className = `change ${lc.change >= 0 ? 'up' : 'down'}`
+      }
+      if (changePctRef.current) {
+        changePctRef.current.textContent = (lc.changePct >= 0 ? '+' : '') + lc.changePct.toFixed(2) + '%'
+      }
+      if (crosshairTimeRef.current) crosshairTimeRef.current.style.display = 'none'
+      if (extraOpenRef.current) extraOpenRef.current.textContent = lc.open.toFixed(2)
+      if (extraHighRef.current) extraHighRef.current.textContent = lc.high.toFixed(2)
+      if (extraLowRef.current) extraLowRef.current.textContent = lc.low.toFixed(2)
+      if (extraVolRef.current) extraVolRef.current.textContent = fmtVol(lc.volume)
+    }
+  }, [])
 
   // Search handler
   useEffect(() => {
@@ -111,22 +194,8 @@ export default function App() {
     loadStock(pick.symbol, pick.name)
   }
 
-  // Current stock price info
-  const lastCandle = kline?.kline?.length ? kline.kline[kline.kline.length - 1] : null
-  const prevCandle = kline?.kline?.length && kline.kline.length > 1 ? kline.kline[kline.kline.length - 2] : null
-  const changePrice = lastCandle && prevCandle ? (lastCandle.close - prevCandle.close) : 0
-  const changePct = lastCandle && prevCandle && prevCandle.close ? (changePrice / prevCandle.close * 100) : 0
-
   // In watchlist?
   const isInWatchlist = currentStock ? watchlist.some(w => w.symbol === currentStock.symbol) : false
-
-  const displayPrice = crosshairData ? crosshairData.close : lastCandle?.close
-  const displayChange = crosshairData
-    ? (crosshairData.close - crosshairData.prevClose)
-    : changePrice
-  const displayChangePct = crosshairData && crosshairData.prevClose
-    ? ((crosshairData.close - crosshairData.prevClose) / crosshairData.prevClose * 100)
-    : changePct
 
   return (
     <>
@@ -183,45 +252,29 @@ export default function App() {
         </div>
       </div>
 
-      {/* Stock Info Bar — 同花顺风格 */}
+      {/* Stock Info Bar — 同花顺风格 (DOM via refs, no re-render on crosshair) */}
       {currentStock && (
         <div className="stock-info-bar">
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, overflow: 'hidden' }}>
             <span className="symbol">{currentStock.symbol}</span>
             <span className="name">{currentStock.name}</span>
-            <span className="price">{displayPrice?.toFixed(2) ?? '--'}</span>
-            <span className={`change ${displayChange >= 0 ? 'up' : 'down'}`}
+            <span ref={priceRef} className="price">--</span>
+            <span ref={changeRef} className="change"
               style={{ minWidth: 80 }}>
-              {displayChange >= 0 ? '+' : ''}{displayChange.toFixed(2)}
-              {'  '}
-              <span style={{ fontSize: 13 }}>
-                {displayChangePct >= 0 ? '+' : ''}{displayChangePct.toFixed(2)}%
-              </span>
+              {' '}
+              <span ref={changePctRef} style={{ fontSize: 13 }}></span>
             </span>
-            {crosshairData && (
-              <span style={{ fontSize: 12, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                {crosshairData.time}
-              </span>
-            )}
+            <span ref={crosshairTimeRef}
+              style={{ fontSize: 12, color: 'var(--text-muted)', whiteSpace: 'nowrap', display: 'none' }}>
+            </span>
             {/* 额外数据：今开 最高 最低 成交量 */}
-            {(() => {
-              const cd = crosshairData || (lastCandle ? {
-                open: lastCandle.open, high: lastCandle.high,
-                low: lastCandle.low, close: lastCandle.close,
-                volume: lastCandle.volume, turnover: lastCandle.turnover,
-              } : null) as any
-              if (!cd) return null
-              const fmtVol = (v: number) => v >= 10000 ? (v / 10000).toFixed(2) + '万' : v.toFixed(0)
-              return (
-                <div style={{ display: 'flex', gap: 10, fontSize: 11, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-                  <span>开 {cd.open.toFixed(2)}</span>
-                  <span>高 {cd.high.toFixed(2)}</span>
-                  <span>低 {cd.low.toFixed(2)}</span>
-                  <span>量 {fmtVol(cd.volume)}</span>
-                </div>
-              )
-            })()}
-            {/* 信号图例 - hover显示策略名称 */}
+            <div style={{ display: 'flex', gap: 10, fontSize: 11, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+              <span>开 <span ref={extraOpenRef}>--</span></span>
+              <span>高 <span ref={extraHighRef}>--</span></span>
+              <span>低 <span ref={extraLowRef}>--</span></span>
+              <span>量 <span ref={extraVolRef}>--</span></span>
+            </div>
+            {/* 信号图例 */}
             {signals.length > 0 && (
               <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0, marginLeft: 8 }}>
                 {Array.from(new Set(signals.map(s => s.type))).map(t => (
@@ -248,7 +301,7 @@ export default function App() {
                 signals={kline.signals}
                 symbol={currentStock.symbol}
                 range={range.days}
-                onCrosshairMove={setCrosshairData}
+                onCrosshairMove={handleCrosshairMove}
               />
             ) : (
               <div style={{

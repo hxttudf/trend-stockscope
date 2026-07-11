@@ -1,13 +1,14 @@
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef, useCallback, memo } from 'react'
 import { createChart, IChartApi, ISeriesApi, CandlestickData, LineData, HistogramData, Time } from 'lightweight-charts'
 import { KlinePoint, Signal } from '../utils/api'
 
-interface CrosshairInfo {
+export interface CrosshairInfo {
   time: string
   open: number
   high: number
   low: number
   close: number
+  volume: number
   prevClose: number   // 前一根K线收盘价，用于计算涨跌幅
 }
 
@@ -39,7 +40,9 @@ const COLORS = {
 
 const KLINE_CACHE = { data: [] as KlinePoint[] }
 
-export default function Chart({ kline, signals, symbol, range, onCrosshairMove }: ChartProps) {
+export default memo(Chart)
+
+function Chart({ kline, signals, symbol, range, onCrosshairMove }: ChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null)
@@ -48,11 +51,15 @@ export default function Chart({ kline, signals, symbol, range, onCrosshairMove }
   const ma10Ref = useRef<ISeriesApi<'Line'> | null>(null)
   const ma20Ref = useRef<ISeriesApi<'Line'> | null>(null)
   const ma60Ref = useRef<ISeriesApi<'Line'> | null>(null)
+  // 用ref存最新onCrosshairMove，避免闭包捕获旧值
+  const onCrosshairMoveRef = useRef(onCrosshairMove)
+  onCrosshairMoveRef.current = onCrosshairMove
 
   // crosshair回调，带prevClose
   const handleCrosshair = useCallback((param: any) => {
+    const cb = onCrosshairMoveRef.current
     if (!param.time || !param.point) {
-      onCrosshairMove?.(null)
+      cb?.(null)
       return
     }
     const data = param.seriesData.get(candleSeriesRef.current) as CandlestickData | undefined
@@ -60,12 +67,13 @@ export default function Chart({ kline, signals, symbol, range, onCrosshairMove }
       const timeStr = String(data.time)
       const idx = KLINE_CACHE.data.findIndex(k => k.time === timeStr)
       const prevClose = idx > 0 ? KLINE_CACHE.data[idx - 1].close : data.close
-      onCrosshairMove?.({
+      cb?.({
         time: timeStr,
         open: data.open,
         high: data.high,
         low: data.low,
         close: data.close,
+        volume: idx >= 0 ? KLINE_CACHE.data[idx].volume : 0,
         prevClose,
       })
     }
