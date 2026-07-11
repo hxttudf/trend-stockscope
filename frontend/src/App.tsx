@@ -35,12 +35,12 @@ interface LastCandle {
   change: number; changePct: number; date: string
 }
 
-/** "至今涨跌幅" = (最新收盘 - 光标K开盘) / 光标K开盘 */
-function gainToToday(klineData: KlinePoint[], anchorOpen: number): number | null {
+/** "至今涨跌幅" = (最新收盘 - 光标K前一根收盘) / 光标K前一根收盘 */
+function gainToToday(klineData: KlinePoint[], anchorClose: number): number | null {
   if (!klineData?.length) return null
   const latestClose = klineData[klineData.length - 1].close
-  if (!anchorOpen) return null
-  return ((latestClose - anchorOpen) / anchorOpen) * 100
+  if (!anchorClose) return null
+  return ((latestClose - anchorClose) / anchorClose) * 100
 }
 
 export default function App() {
@@ -78,11 +78,11 @@ export default function App() {
   const klineRef = useRef<KlinePoint[]>([])
 
   // ── update 至今涨跌幅 via refs, no React re-render ──
-  // 至今涨跌幅 = (最新收盘 - 光标收盘) / 光标收盘
-  const updateGainToToday = (hoveredClose: number) => {
+  // 至今涨跌幅 = (最新收盘 - 前一根收盘) / 前一根收盘
+  const updateGainToToday = (anchorClose: number) => {
     const arr = klineRef.current
     if (!arr.length || !dayGainRef.current) return
-    const dg = gainToToday(arr, hoveredClose)
+    const dg = gainToToday(arr, anchorClose)
     if (dg === null) return
     dayGainRef.current.textContent = (dg >= 0 ? '+' : '') + dg.toFixed(2) + '%'
     dayGainRef.current.style.color = dg >= 0 ? 'var(--red)' : 'var(--green)'
@@ -206,7 +206,7 @@ export default function App() {
       if (extraLowRef.current) extraLowRef.current.textContent = data.low.toFixed(2)
       if (extraCloseRef.current) extraCloseRef.current.textContent = data.close.toFixed(2)
       if (extraVolRef.current) extraVolRef.current.textContent = fmtVol(data.volume)
-      updateGainToToday(data.open)  // 光标K开盘→最新收盘
+      updateGainToToday(data.prevClose)  // 光标K前一根收盘→最新收盘
     } else if (lc) {
       if (priceRef.current) priceRef.current.textContent = lc.close.toFixed(2)
       if (changeRef.current) {
