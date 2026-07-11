@@ -79,8 +79,11 @@ export async function getPicks(date?: string, strategy?: string): Promise<PickRe
   return res.json()
 }
 
-export async function getPickDates(): Promise<PickDateSummary[]> {
-  const res = await fetch(`${API_BASE}/picks/dates`)
+export async function getPickDates(strategy?: string): Promise<PickDateSummary[]> {
+  const params = new URLSearchParams()
+  if (strategy) params.set('strategy', strategy)
+  const qs = params.toString()
+  const res = await fetch(`${API_BASE}/picks/dates${qs ? '?' + qs : ''}`)
   return res.json()
 }
 

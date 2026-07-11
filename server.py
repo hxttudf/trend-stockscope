@@ -164,11 +164,24 @@ def get_picks():
 
 @app.route("/api/picks/dates")
 def get_pick_dates():
+    strategy = request.args.get("strategy")
     conn = db_conn(SCOPE_DB)
     cur = conn.cursor()
-    rows = cur.execute(
-        "SELECT date, total_picks, strategies FROM daily_summary ORDER BY date DESC LIMIT 200"
-    ).fetchall()
+    if strategy:
+        rows = cur.execute(
+            """SELECT dp.date, 
+                      COUNT(DISTINCT dp.symbol) as total_picks,
+                      GROUP_CONCAT(DISTINCT dp.strategy_id) as strategies
+               FROM daily_picks dp
+               WHERE dp.strategy_id = ?
+               GROUP BY dp.date
+               ORDER BY dp.date DESC LIMIT 200""",
+            (strategy,)
+        ).fetchall()
+    else:
+        rows = cur.execute(
+            "SELECT date, total_picks, strategies FROM daily_summary ORDER BY date DESC LIMIT 200"
+        ).fetchall()
     conn.close()
     return jsonify([dict(r) for r in rows])
 

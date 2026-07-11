@@ -35,7 +35,7 @@ interface LastCandle {
   change: number; changePct: number; date: string
 }
 
-/** "至今涨跌幅" = (最新收盘 - 光标K次日开盘) / 光标K次日开盘 */
+/** "至今涨跌幅" = (最新收盘 - 光标K开盘) / 光标K开盘 */
 function gainToToday(klineData: KlinePoint[], anchorOpen: number): number | null {
   if (!klineData?.length) return null
   const latestClose = klineData[klineData.length - 1].close
@@ -94,13 +94,22 @@ export default function App() {
   // Load watchlist and pick dates on mount
   useEffect(() => {
     getWatchlist().then(setWatchlist)
-    getPickDates().then(dates => {
+  }, [])
+
+  // Load pick dates (filtered by strategy)
+  useEffect(() => {
+    getPickDates(strategyFilter || undefined).then(dates => {
       setPickDates(dates.map(d => ({ date: d.date, total: d.total_picks })))
+      // 如果当前日期不在新日期列表里，选第一个
       if (dates.length > 0) {
-        setSelectedPickDate(dates[0].date)
+        if (!dates.find(d => d.date === selectedPickDate)) {
+          setSelectedPickDate(dates[0].date)
+        }
+      } else {
+        setSelectedPickDate('')
       }
     })
-  }, [])
+  }, [strategyFilter])
 
   // Load picks for selected date + strategy filter
   useEffect(() => {
@@ -197,7 +206,7 @@ export default function App() {
       if (extraLowRef.current) extraLowRef.current.textContent = data.low.toFixed(2)
       if (extraCloseRef.current) extraCloseRef.current.textContent = data.close.toFixed(2)
       if (extraVolRef.current) extraVolRef.current.textContent = fmtVol(data.volume)
-      updateGainToToday(data.nextOpen)  // 光标K次日开盘→最新收盘
+      updateGainToToday(data.open)  // 光标K开盘→最新收盘
     } else if (lc) {
       if (priceRef.current) priceRef.current.textContent = lc.close.toFixed(2)
       if (changeRef.current) {

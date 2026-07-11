@@ -10,7 +10,6 @@ export interface CrosshairInfo {
   close: number
   volume: number
   prevClose: number   // 前一根K线收盘价，用于计算涨跌幅
-  nextOpen: number    // 次日开盘价，用于计算至今涨跌幅
 }
 
 interface ChartProps {
@@ -68,9 +67,6 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove }: ChartProps) {
       const timeStr = String(data.time)
       const idx = KLINE_CACHE.data.findIndex(k => k.time === timeStr)
       const prevClose = idx > 0 ? KLINE_CACHE.data[idx - 1].close : data.close
-      const nextOpen = idx >= 0 && idx < KLINE_CACHE.data.length - 1
-        ? KLINE_CACHE.data[idx + 1].open
-        : data.close
       cb?.({
         time: timeStr,
         open: data.open,
@@ -79,7 +75,6 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove }: ChartProps) {
         close: data.close,
         volume: idx >= 0 ? KLINE_CACHE.data[idx].volume : 0,
         prevClose,
-        nextOpen,
       })
     }
   }, [])
