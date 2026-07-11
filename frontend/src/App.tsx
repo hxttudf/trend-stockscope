@@ -43,6 +43,27 @@ function gainToToday(klineData: KlinePoint[], anchorClose: number): number | nul
   return ((latestClose - anchorClose) / anchorClose) * 100
 }
 
+/** 计算某根K线位置的均线值 */
+function maAt(closes: number[], period: number, idx: number): number | null {
+  if (idx < period - 1 || idx >= closes.length) return null
+  let sum = 0
+  for (let i = idx - period + 1; i <= idx; i++) sum += closes[i]
+  return sum / period
+}
+
+/** 更新MA显示 */
+function updateMAs(closes: number[], idx: number, refs: HTMLSpanElement[]) {
+  const periods = [5, 10, 20, 60]
+  for (let i = 0; i < periods.length; i++) {
+    const v = maAt(closes, periods[i], idx)
+    if (refs[i]) refs[i].textContent = v != null ? v.toFixed(2) : '--'
+  }
+}
+
+function clearMAs(refs: HTMLSpanElement[]) {
+  for (const r of refs) { if (r) r.textContent = '--' }
+}
+
 export default function App() {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<StockInfo[]>([])
@@ -61,6 +82,8 @@ export default function App() {
   const [sidebarTab, setSidebarTab] = useState<'watchlist' | 'picks'>('watchlist')
   const [strategyFilter, setStrategyFilter] = useState('')  // '' = all
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null)
+  const [measureMode, setMeasureMode] = useState(false)
+  const [benchmarkIdx, setBenchmarkIdx] = useState<number | null>(null)
 
   // ── Refs for crosshair direct-DOM updates ──
   const priceRef = useRef<HTMLSpanElement>(null)
@@ -77,10 +100,15 @@ export default function App() {
   const ma10Ref = useRef<HTMLSpanElement>(null)
   const ma20Ref = useRef<HTMLSpanElement>(null)
   const ma60Ref = useRef<HTMLSpanElement>(null)
+  const measureRef = useRef<HTMLSpanElement>(null)  // 区间测量显示
   const lastCandleRef = useRef<LastCandle | null>(null)
 
   // Stored kline for gainToToday (avoid stale closure)
   const klineRef = useRef<KlinePoint[]>([])
+
+  // ── Refs for measurement mode (used inside crosshair callback) ──
+  const measureModeRef = useRef(false)
+  const benchmarkRef = useRef<number | null>(null)
 
   // ── update 至今涨跌幅 via refs, no React re-render ──
   // 至今涨跌幅 = (最新收盘 - 前一根收盘) / 前一根收盘
@@ -95,6 +123,8 @@ export default function App() {
 
   // Keep ref in sync with state every render
   if (kline?.kline) klineRef.current = kline.kline
+  measureModeRef.current = measureMode
+  benchmarkRef.current = benchmarkIdx
 
   // Load watchlist and pick dates on mount
   useEffect(() => {
@@ -133,6 +163,7 @@ export default function App() {
     setCurrentStock({ symbol, name })
     setSearchQuery('')
     setShowSearch(false)
+    setBenchmarkIdx(null)  // 切股票清基准
     const data = await getKline(symbol, qfq, 600)
     setKline(data)
     setSignals(data.signals)
@@ -183,11 +214,9 @@ export default function App() {
     if (extraCloseRef.current) extraCloseRef.current.textContent = last.close.toFixed(2)
     if (extraVolRef.current) extraVolRef.current.textContent = fmtVol(last.volume)
     updateGainToToday(last.close)  // latest → latest = 0%
-    // 初始清除MA
-    if (ma5Ref.current) ma5Ref.current.textContent = '--'
-    if (ma10Ref.current) ma10Ref.current.textContent = '--'
-    if (ma20Ref.current) ma20Ref.current.textContent = '--'
-    if (ma60Ref.current) ma60Ref.current.textContent = '--'
+    // 初始清除MA和测量
+    clearMAs([ma5Ref.current, ma10Ref.current, ma20Ref.current, ma60Ref.current].filter(Boolean) as HTMLSpanElement[])
+    if (measureRef.current) measureRef.current.textContent = ''
   }, [kline])
 
   // ── 至今涨跌幅不再依赖 range 范围 ──
@@ -195,6 +224,7 @@ export default function App() {
   // Crosshair handler — directly updates DOM, no React state involved
   const handleCrosshairMove = useCallback((data: CrosshairInfo | null) => {
     const lc = lastCandleRef.current
+    const arr = klineRef.current
     if (data && lc) {
       const change = data.close - data.prevClose
       const changePct = data.prevClose ? (change / data.prevClose * 100) : 0
@@ -216,12 +246,32 @@ export default function App() {
       if (extraLowRef.current) extraLowRef.current.textContent = data.low.toFixed(2)
       if (extraCloseRef.current) extraCloseRef.current.textContent = data.close.toFixed(2)
       if (extraVolRef.current) extraVolRef.current.textContent = fmtVol(data.volume)
-      updateGainToToday(data.prevClose)  // 光标K前一根收盘→最新收盘
-      // MA跟随光标
-      if (ma5Ref.current) ma5Ref.current.textContent = data.ma5 != null ? data.ma5.toFixed(2) : '--'
-      if (ma10Ref.current) ma10Ref.current.textContent = data.ma10 != null ? data.ma10.toFixed(2) : '--'
-      if (ma20Ref.current) ma20Ref.current.textContent = data.ma20 != null ? data.ma20.toFixed(2) : '--'
-      if (ma60Ref.current) ma60Ref.current.textContent = data.ma60 != null ? data.ma60.toFixed(2) : '--'
+      updateGainToToday(data.prevClose)
+      // MA从kline数据直接计算
+      const closes = arr.map(k => k.close)
+      const cursorIdx = arr.findIndex(k => k.time === data.time)
+      if (cursorIdx >= 0) {
+        updateMAs(closes, cursorIdx, [ma5Ref.current, ma10Ref.current, ma20Ref.current, ma60Ref.current].filter(Boolean) as HTMLSpanElement[])
+      } else {
+        clearMAs([ma5Ref.current, ma10Ref.current, ma20Ref.current, ma60Ref.current].filter(Boolean) as HTMLSpanElement[])
+      }
+      // 区间测量
+      if (measureModeRef.current && benchmarkRef.current !== null && cursorIdx >= 0 && measureRef.current) {
+        const bi = benchmarkRef.current
+        const ci = cursorIdx
+        const b = arr[bi]
+        const c = arr[ci]
+        if (b && c) {
+          const pct = ((c.close - b.close) / b.close) * 100
+          const days = Math.abs(ci - bi)
+          const amp = ((Math.max(b.high, c.high) - Math.min(b.low, c.low)) / b.close) * 100
+          const sign = pct >= 0 ? '+' : ''
+          measureRef.current.textContent = `${sign}${pct.toFixed(2)}%  ${days}天  ${amp.toFixed(2)}%振幅`
+          measureRef.current.style.color = pct >= 0 ? 'var(--red)' : 'var(--green)'
+        }
+      } else if (measureRef.current) {
+        measureRef.current.textContent = benchmarkRef.current !== null ? '移动光标测量' : ''
+      }
     } else if (lc) {
       if (priceRef.current) priceRef.current.textContent = lc.close.toFixed(2)
       if (changeRef.current) {
@@ -241,12 +291,25 @@ export default function App() {
       if (extraLowRef.current) extraLowRef.current.textContent = lc.low.toFixed(2)
       if (extraCloseRef.current) extraCloseRef.current.textContent = lc.close.toFixed(2)
       if (extraVolRef.current) extraVolRef.current.textContent = fmtVol(lc.volume)
-      updateGainToToday(lc.close)  // 复位→最新到最新=0%
-      // 复位时清除MA
-      if (ma5Ref.current) ma5Ref.current.textContent = '--'
-      if (ma10Ref.current) ma10Ref.current.textContent = '--'
-      if (ma20Ref.current) ma20Ref.current.textContent = '--'
-      if (ma60Ref.current) ma60Ref.current.textContent = '--'
+      updateGainToToday(lc.close)
+      clearMAs([ma5Ref.current, ma10Ref.current, ma20Ref.current, ma60Ref.current].filter(Boolean) as HTMLSpanElement[])
+      // 复位时更新测量（基准→最新）
+      if (measureModeRef.current && benchmarkRef.current !== null && measureRef.current) {
+        const bi = benchmarkRef.current
+        const li = arr.length - 1
+        if (bi >= 0 && bi < arr.length && li >= 0) {
+          const b = arr[bi]
+          const l = arr[li]
+          const pct = ((l.close - b.close) / b.close) * 100
+          const days = li - bi
+          const amp = ((Math.max(b.high, l.high) - Math.min(b.low, l.low)) / b.close) * 100
+          const sign = pct >= 0 ? '+' : ''
+          measureRef.current.textContent = `${sign}${pct.toFixed(2)}%  ${days}天  ${amp.toFixed(2)}%振幅`
+          measureRef.current.style.color = pct >= 0 ? 'var(--red)' : 'var(--green)'
+        }
+      } else if (measureRef.current) {
+        measureRef.current.textContent = ''
+      }
     }
   }, [])
 
@@ -288,6 +351,14 @@ export default function App() {
   // Select from picks
   const handleSelectPick = (pick: PickRecord) => {
     loadStock(pick.symbol, pick.name)
+  }
+
+  // Chart click → toggle benchmark
+  const handleChartClick = (time: string) => {
+    if (!measureMode) return
+    const idx = klineRef.current.findIndex(k => k.time === time)
+    if (idx < 0) return
+    setBenchmarkIdx(prev => prev === idx ? null : idx)
   }
 
   // In watchlist?
@@ -357,6 +428,11 @@ export default function App() {
               onChange={e => setQfq(e.target.checked)} />
             <label htmlFor="qfq">前复权</label>
           </div>
+          <button className={`toolbar-btn ${measureMode ? 'active' : ''}`}
+            onClick={() => { setMeasureMode(m => !m); setBenchmarkIdx(null) }}
+            style={{ fontSize: 11, padding: '2px 6px' }}>
+            M
+          </button>
 
           <div className="range-group">
             {RANGES.map(r => (
@@ -421,6 +497,12 @@ export default function App() {
             <span>MA20 <span ref={ma20Ref} style={{ color: '#58a6ff' }}>--</span></span>
             <span>MA60 <span ref={ma60Ref} style={{ color: '#bc8cff' }}>--</span></span>
           </div>
+          {/* 第三行：区间测量 */}
+          {measureMode && (
+            <div style={{ display: 'flex', gap: 10, fontSize: 11, color: 'var(--text-secondary)', padding: '0 12px 4px', whiteSpace: 'nowrap' }}>
+              <span ref={measureRef}></span>
+            </div>
+          )}
         </div>
       )}
 
@@ -436,6 +518,7 @@ export default function App() {
                 symbol={currentStock.symbol}
                 range={range.days}
                 onCrosshairMove={handleCrosshairMove}
+                onChartClick={handleChartClick}
               />
             ) : (
               <div style={{

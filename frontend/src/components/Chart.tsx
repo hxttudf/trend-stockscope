@@ -10,10 +10,6 @@ export interface CrosshairInfo {
   close: number
   volume: number
   prevClose: number   // 前一根K线收盘价，用于计算涨跌幅
-  ma5?: number
-  ma10?: number
-  ma20?: number
-  ma60?: number
 }
 
 interface ChartProps {
@@ -22,6 +18,7 @@ interface ChartProps {
   symbol: string
   range: number
   onCrosshairMove?: (data: CrosshairInfo | null) => void
+  onChartClick?: (time: string) => void
 }
 
 const COLORS = {
@@ -46,7 +43,7 @@ const KLINE_CACHE = { data: [] as KlinePoint[] }
 
 export default memo(Chart)
 
-function Chart({ kline, signals, symbol, range, onCrosshairMove }: ChartProps) {
+function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick }: ChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null)
@@ -58,6 +55,8 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove }: ChartProps) {
   // 用ref存最新onCrosshairMove，避免闭包捕获旧值
   const onCrosshairMoveRef = useRef(onCrosshairMove)
   onCrosshairMoveRef.current = onCrosshairMove
+  const onChartClickRef = useRef(onChartClick)
+  onChartClickRef.current = onChartClick
 
   // crosshair回调，带prevClose
   const handleCrosshair = useCallback((param: any) => {
@@ -71,11 +70,6 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove }: ChartProps) {
       const timeStr = String(data.time)
       const idx = KLINE_CACHE.data.findIndex(k => k.time === timeStr)
       const prevClose = idx > 0 ? KLINE_CACHE.data[idx - 1].close : data.close
-      // 读取光标位置各均线值
-      const ma5Data = param.seriesData.get(ma5Ref.current) as LineData | undefined
-      const ma10Data = param.seriesData.get(ma10Ref.current) as LineData | undefined
-      const ma20Data = param.seriesData.get(ma20Ref.current) as LineData | undefined
-      const ma60Data = param.seriesData.get(ma60Ref.current) as LineData | undefined
       cb?.({
         time: timeStr,
         open: data.open,
@@ -84,10 +78,6 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove }: ChartProps) {
         close: data.close,
         volume: idx >= 0 ? KLINE_CACHE.data[idx].volume : 0,
         prevClose,
-        ma5: ma5Data?.value,
-        ma10: ma10Data?.value,
-        ma20: ma20Data?.value,
-        ma60: ma60Data?.value,
       })
     }
   }, [])
@@ -182,6 +172,19 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove }: ChartProps) {
 
     chart.subscribeCrosshairMove(handleCrosshair)
 
+    // Chart click → benchmark
+    const handleContainerClick = (e: MouseEvent) => {
+      const cb = onChartClickRef.current
+      if (!cb || !chartRef.current) return
+      const rect = containerRef.current?.getBoundingClientRect()
+      if (!rect) return
+      const x = e.clientX - rect.left
+      const time = chartRef.current.timeScale().coordinateToTime(x)
+      if (time != null) cb(String(time))
+    }
+    const el = containerRef.current
+    el?.addEventListener('click', handleContainerClick)
+
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const { width, height } = entry.contentRect
@@ -191,6 +194,7 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove }: ChartProps) {
     observer.observe(containerRef.current)
 
     return () => {
+      el?.removeEventListener('click', handleContainerClick)
       observer.disconnect()
       chart.remove()
     }
