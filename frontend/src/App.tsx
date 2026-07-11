@@ -35,6 +35,7 @@ export default function App() {
   const [picks, setPicks] = useState<PickRecord[]>([])
   const [pickDates, setPickDates] = useState<{ date: string; total: number }[]>([])
   const [selectedPickDate, setSelectedPickDate] = useState('')
+  const [sidebarTab, setSidebarTab] = useState<'watchlist' | 'picks'>('watchlist')
 
   // Load watchlist and pick dates on mount
   useEffect(() => {
@@ -264,33 +265,79 @@ export default function App() {
           )}
         </div>
 
-        {/* Watchlist Sidebar */}
+        {/* Right Sidebar — 自选股/每日选股 切换 */}
         <div className="watchlist-panel">
-          <div className="watchlist-header">
-            <h3>📌 自选股</h3>
-            <span className="watchlist-count">{watchlist.length}</span>
+          <div className="wl-tabs">
+            <button className={`wl-tab ${sidebarTab === 'watchlist' ? 'active' : ''}`}
+              onClick={() => setSidebarTab('watchlist')}>
+              📌 自选股 <span className="wl-count">{watchlist.length}</span>
+            </button>
+            <button className={`wl-tab ${sidebarTab === 'picks' ? 'active' : ''}`}
+              onClick={() => setSidebarTab('picks')}>
+              📋 每日选股 <span className="wl-count">{pickDates.length > 0 ? pickDates[0].total : 0}</span>
+            </button>
           </div>
-          <div className="watchlist-items">
-            {watchlist.length === 0 ? (
-              <div className="watchlist-empty">
-                暂无自选股<br />
-                搜索股票后点击「+ 关注」添加
-              </div>
-            ) : (
-              watchlist.map(item => (
-                <div key={item.symbol}
-                  className={`watchlist-item ${currentStock?.symbol === item.symbol ? 'active' : ''}`}
-                  onClick={() => handleSelectWatchlist(item)}>
-                  <span className="wl-sym">{item.symbol}</span>
-                  <span className="wl-name">{item.name}</span>
-                  <button className="wl-remove"
-                    onClick={e => { e.stopPropagation(); handleRemoveWatchlist(item.symbol) }}>
-                    ×
-                  </button>
+
+          {sidebarTab === 'watchlist' ? (
+            <div className="watchlist-items">
+              {watchlist.length === 0 ? (
+                <div className="watchlist-empty">
+                  暂无自选股<br />
+                  搜索股票后点击「+ 关注」添加
                 </div>
-              ))
-            )}
-          </div>
+              ) : (
+                watchlist.map(item => (
+                  <div key={item.symbol}
+                    className={`watchlist-item ${currentStock?.symbol === item.symbol ? 'active' : ''}`}
+                    onClick={() => handleSelectWatchlist(item)}>
+                    <span className="wl-sym">{item.symbol}</span>
+                    <span className="wl-name">{item.name}</span>
+                    <button className="wl-remove"
+                      onClick={e => { e.stopPropagation(); handleRemoveWatchlist(item.symbol) }}>
+                      ×
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          ) : (
+            <div className="watchlist-items">
+              {/* Date selector */}
+              {pickDates.length > 1 && (
+                <div className="picks-date-bar">
+                  {pickDates.slice(0, 10).map(d => (
+                    <button key={d.date}
+                      className={`range-btn ${d.date === selectedPickDate ? 'active' : ''}`}
+                      onClick={() => setSelectedPickDate(d.date)}>
+                      {d.date.slice(5)} <span className="wl-count">{d.total}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {picks.length === 0 ? (
+                <div className="watchlist-empty">
+                  {selectedPickDate
+                    ? `${selectedPickDate} 无策略选股数据`
+                    : '暂无选股数据\n15:22定时同步后更新'}
+                </div>
+              ) : (
+                picks.map(p => (
+                  <div key={p.symbol}
+                    className={`watchlist-item ${currentStock?.symbol === p.symbol ? 'active' : ''}`}
+                    onClick={() => handleSelectPick(p)}>
+                    <div style={{ flex: 1 }}>
+                      <span className="wl-sym">{p.symbol}</span>
+                      <span className="wl-name">{p.name}</span>
+                    </div>
+                    <div className="pc-tags" style={{ flexShrink: 0 }}>
+                      <span className="pick-tag">{p.dist_ma20?.toFixed(1)}%</span>
+                      <span className="pick-tag">量{p.vol_ratio?.toFixed(2)}</span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
         </div>
       </div>
     </>

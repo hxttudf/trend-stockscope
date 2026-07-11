@@ -235,6 +235,52 @@ body {
   overflow: hidden;
 }
 
+.wl-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.wl-tab {
+  flex: 1;
+  padding: 8px 6px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border-bottom: 2px solid transparent;
+}
+
+.wl-tab:hover {
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+}
+
+.wl-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.wl-count {
+  font-size: 10px;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  padding: 0 5px;
+  border-radius: 8px;
+  line-height: 16px;
+}
+
+.wl-tab.active .wl-count {
+  background: rgba(88,166,255,0.15);
+  color: var(--accent);
+}
+
 .watchlist-header {
   display: flex;
   justify-content: space-between;
@@ -480,4 +526,13 @@ body {
 .signal-badge.ultra_shrink {
   background: rgba(188,140,255,0.15);
   color: #bc8cff;
+}
+
+/* ── Picks Date Bar (sidebar) ───────────────────────────── */
+.picks-date-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
 }
