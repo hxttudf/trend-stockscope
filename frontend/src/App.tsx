@@ -209,7 +209,7 @@ export default function App() {
                 open: lastCandle.open, high: lastCandle.high,
                 low: lastCandle.low, close: lastCandle.close,
                 volume: lastCandle.volume, turnover: lastCandle.turnover,
-              } : null)
+              } : null) as any
               if (!cd) return null
               const fmtVol = (v: number) => v >= 10000 ? (v / 10000).toFixed(2) + '万' : v.toFixed(0)
               return (
@@ -267,55 +267,16 @@ export default function App() {
               </div>
             )}
           </div>
-
-          {/* Picks panel */}
-          {picks.length > 0 && (
-            <div className="picks-panel">
-              <div className="picks-header">
-                <h4>📋 今日选股</h4>
-                <span className="picks-date">{selectedPickDate}</span>
-                <span className="picks-count">{picks.length}只</span>
-                {pickDates.length > 1 && (
-                  <div style={{ display: 'flex', gap: 4, marginLeft: 'auto' }}>
-                    {pickDates.slice(0, 10).map(d => (
-                      <button key={d.date}
-                        className={`range-btn ${d.date === selectedPickDate ? 'active' : ''}`}
-                        onClick={() => setSelectedPickDate(d.date)}>
-                        {d.date.slice(5)} ({d.total})
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <div className="picks-scroll">
-                {picks.map(p => (
-                  <div key={p.symbol} className="pick-card"
-                    onClick={() => handleSelectPick(p)}>
-                    <div>
-                      <span className="pc-sym">{p.symbol}</span>
-                      <span className="pc-name">{p.name}</span>
-                    </div>
-                    <div className="pc-price">{p.close_qfq?.toFixed(2)}</div>
-                    <div className="pc-tags">
-                      <span className="pick-tag">MA20 {p.dist_ma20?.toFixed(1)}%</span>
-                      <span className="pick-tag">量比 {p.vol_ratio?.toFixed(2)}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Right Sidebar — 自选股/每日选股 切换 */}
-        <div className="watchlist-panel">
+          </div>
+          {/* Right Sidebar — 自选股/每日选股 切换 */}
+          <div className="watchlist-panel">
           <div className="wl-tabs">
-            <button className={`wl-tab ${sidebarTab === 'watchlist' ? 'active' : ''}`}
-              onClick={() => setSidebarTab('watchlist')}>
-              📌 自选股 <span className="wl-count">{watchlist.length}</span>
-            </button>
-            <button className={`wl-tab ${sidebarTab === 'picks' ? 'active' : ''}`}
-              onClick={() => setSidebarTab('picks')}>
+          <button className={`wl-tab ${sidebarTab === 'watchlist' ? 'active' : ''}`}
+            onClick={() => setSidebarTab('watchlist')}>
+            📌 自选股 <span className="wl-count">{watchlist.length}</span>
+          </button>
+          <button className={`wl-tab ${sidebarTab === 'picks' ? 'active' : ''}`}
+            onClick={() => setSidebarTab('picks')}>
               📋 选股 <span className="wl-count">{pickDates.length}天</span>
             </button>
           </div>
