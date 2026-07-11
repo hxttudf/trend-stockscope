@@ -73,6 +73,10 @@ export default function App() {
   const extraCloseRef = useRef<HTMLSpanElement>(null)
   const extraVolRef = useRef<HTMLSpanElement>(null)
   const dayGainRef = useRef<HTMLSpanElement>(null)
+  const ma5Ref = useRef<HTMLSpanElement>(null)
+  const ma10Ref = useRef<HTMLSpanElement>(null)
+  const ma20Ref = useRef<HTMLSpanElement>(null)
+  const ma60Ref = useRef<HTMLSpanElement>(null)
   const lastCandleRef = useRef<LastCandle | null>(null)
 
   // Stored kline for gainToToday (avoid stale closure)
@@ -179,6 +183,11 @@ export default function App() {
     if (extraCloseRef.current) extraCloseRef.current.textContent = last.close.toFixed(2)
     if (extraVolRef.current) extraVolRef.current.textContent = fmtVol(last.volume)
     updateGainToToday(last.close)  // latest → latest = 0%
+    // 初始清除MA
+    if (ma5Ref.current) ma5Ref.current.textContent = '--'
+    if (ma10Ref.current) ma10Ref.current.textContent = '--'
+    if (ma20Ref.current) ma20Ref.current.textContent = '--'
+    if (ma60Ref.current) ma60Ref.current.textContent = '--'
   }, [kline])
 
   // ── 至今涨跌幅不再依赖 range 范围 ──
@@ -208,6 +217,11 @@ export default function App() {
       if (extraCloseRef.current) extraCloseRef.current.textContent = data.close.toFixed(2)
       if (extraVolRef.current) extraVolRef.current.textContent = fmtVol(data.volume)
       updateGainToToday(data.prevClose)  // 光标K前一根收盘→最新收盘
+      // MA跟随光标
+      if (ma5Ref.current) ma5Ref.current.textContent = data.ma5 != null ? data.ma5.toFixed(2) : '--'
+      if (ma10Ref.current) ma10Ref.current.textContent = data.ma10 != null ? data.ma10.toFixed(2) : '--'
+      if (ma20Ref.current) ma20Ref.current.textContent = data.ma20 != null ? data.ma20.toFixed(2) : '--'
+      if (ma60Ref.current) ma60Ref.current.textContent = data.ma60 != null ? data.ma60.toFixed(2) : '--'
     } else if (lc) {
       if (priceRef.current) priceRef.current.textContent = lc.close.toFixed(2)
       if (changeRef.current) {
@@ -228,6 +242,11 @@ export default function App() {
       if (extraCloseRef.current) extraCloseRef.current.textContent = lc.close.toFixed(2)
       if (extraVolRef.current) extraVolRef.current.textContent = fmtVol(lc.volume)
       updateGainToToday(lc.close)  // 复位→最新到最新=0%
+      // 复位时清除MA
+      if (ma5Ref.current) ma5Ref.current.textContent = '--'
+      if (ma10Ref.current) ma10Ref.current.textContent = '--'
+      if (ma20Ref.current) ma20Ref.current.textContent = '--'
+      if (ma60Ref.current) ma60Ref.current.textContent = '--'
     }
   }, [])
 
@@ -394,6 +413,13 @@ export default function App() {
                 ))}
               </div>
             )}
+          </div>
+          {/* 第二行：MA均线跟随光标 */}
+          <div style={{ display: 'flex', gap: 10, fontSize: 11, color: 'var(--text-secondary)', padding: '2px 12px 4px', whiteSpace: 'nowrap' }}>
+            <span>MA5 <span ref={ma5Ref} style={{ color: '#f0d43a' }}>--</span></span>
+            <span>MA10 <span ref={ma10Ref} style={{ color: '#f7823b' }}>--</span></span>
+            <span>MA20 <span ref={ma20Ref} style={{ color: '#58a6ff' }}>--</span></span>
+            <span>MA60 <span ref={ma60Ref} style={{ color: '#bc8cff' }}>--</span></span>
           </div>
         </div>
       )}

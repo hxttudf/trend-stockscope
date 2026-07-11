@@ -10,6 +10,10 @@ export interface CrosshairInfo {
   close: number
   volume: number
   prevClose: number   // 前一根K线收盘价，用于计算涨跌幅
+  ma5?: number
+  ma10?: number
+  ma20?: number
+  ma60?: number
 }
 
 interface ChartProps {
@@ -67,6 +71,11 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove }: ChartProps) {
       const timeStr = String(data.time)
       const idx = KLINE_CACHE.data.findIndex(k => k.time === timeStr)
       const prevClose = idx > 0 ? KLINE_CACHE.data[idx - 1].close : data.close
+      // 读取光标位置各均线值
+      const ma5Data = param.seriesData.get(ma5Ref.current) as LineData | undefined
+      const ma10Data = param.seriesData.get(ma10Ref.current) as LineData | undefined
+      const ma20Data = param.seriesData.get(ma20Ref.current) as LineData | undefined
+      const ma60Data = param.seriesData.get(ma60Ref.current) as LineData | undefined
       cb?.({
         time: timeStr,
         open: data.open,
@@ -75,6 +84,10 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove }: ChartProps) {
         close: data.close,
         volume: idx >= 0 ? KLINE_CACHE.data[idx].volume : 0,
         prevClose,
+        ma5: ma5Data?.value,
+        ma10: ma10Data?.value,
+        ma20: ma20Data?.value,
+        ma60: ma60Data?.value,
       })
     }
   }, [])
