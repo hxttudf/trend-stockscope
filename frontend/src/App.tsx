@@ -35,12 +35,12 @@ interface LastCandle {
   change: number; changePct: number; date: string
 }
 
-/** "至今涨跌幅" = 光标所在K线 → 最新K线涨幅 */
-function gainToToday(klineData: KlinePoint[], targetClose: number): number | null {
+/** "至今涨跌幅" = (最新收盘 - 光标K次日开盘) / 光标K次日开盘 */
+function gainToToday(klineData: KlinePoint[], anchorOpen: number): number | null {
   if (!klineData?.length) return null
   const latestClose = klineData[klineData.length - 1].close
-  if (!targetClose) return null
-  return ((latestClose - targetClose) / targetClose) * 100
+  if (!anchorOpen) return null
+  return ((latestClose - anchorOpen) / anchorOpen) * 100
 }
 
 export default function App() {
@@ -197,7 +197,7 @@ export default function App() {
       if (extraLowRef.current) extraLowRef.current.textContent = data.low.toFixed(2)
       if (extraCloseRef.current) extraCloseRef.current.textContent = data.close.toFixed(2)
       if (extraVolRef.current) extraVolRef.current.textContent = fmtVol(data.volume)
-      updateGainToToday(data.close)  // 光标K到最新K
+      updateGainToToday(data.nextOpen)  // 光标K次日开盘→最新收盘
     } else if (lc) {
       if (priceRef.current) priceRef.current.textContent = lc.close.toFixed(2)
       if (changeRef.current) {
@@ -428,7 +428,18 @@ export default function App() {
             </div>
           ) : (
             <div className="watchlist-items">
-              {/* Date selector — 滚动 */}
+              {/* Strategy filter tabs — 先策略 */}
+              <div className="picks-strategy-bar" style={{ display: 'flex', gap: 4, padding: '4px 8px', borderBottom: '1px solid var(--border)' }}>
+                {STRATEGY_TABS.map(st => (
+                  <button key={st.key}
+                    className={`range-btn ${strategyFilter === st.key ? 'active' : ''}`}
+                    onClick={() => setStrategyFilter(st.key)}
+                    style={{ fontSize: 11, padding: '2px 6px' }}>
+                    {st.label}
+                  </button>
+                ))}
+              </div>
+              {/* Date selector — 后日期 */}
               {pickDates.length > 0 && (
                 <div className="picks-date-bar" style={{ maxHeight: 60, overflowY: 'auto' }}>
                   {pickDates.map(d => (
@@ -436,19 +447,6 @@ export default function App() {
                       className={`range-btn ${d.date === selectedPickDate ? 'active' : ''}`}
                       onClick={() => setSelectedPickDate(d.date)}>
                       {d.date.slice(5)} <span className="wl-count">{d.total}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-              {/* Strategy filter tabs — 全部/A/B/缩/原 */}
-              {selectedPickDate && (
-                <div className="picks-strategy-bar" style={{ display: 'flex', gap: 4, padding: '4px 8px', borderBottom: '1px solid var(--border)' }}>
-                  {STRATEGY_TABS.map(st => (
-                    <button key={st.key}
-                      className={`range-btn ${strategyFilter === st.key ? 'active' : ''}`}
-                      onClick={() => setStrategyFilter(st.key)}
-                      style={{ fontSize: 11, padding: '2px 6px' }}>
-                      {st.label}
                     </button>
                   ))}
                 </div>
