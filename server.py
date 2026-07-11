@@ -127,24 +127,28 @@ def get_picks():
     where = ["1=1"]
     params = []
     if date:
-        where.append("date = ?")
+        where.append("dp.date = ?")
         params.append(date)
+    
+    # Strategy filter: find all symbols that have the target strategy on that date,
+    # then return their full multi-strategy grouped rows
     if strategy:
-        where.append("strategy_id = ?")
+        where.append("dp.symbol IN (SELECT symbol FROM daily_picks WHERE date = ? AND strategy_id = ?)")
+        params.append(date if date else "")
         params.append(strategy)
     
     rows = cur.execute(
-        f"""SELECT date, symbol, name, 
-                   GROUP_CONCAT(DISTINCT strategy_id) as strategies,
-                   MAX(close_qfq) as close_qfq,
-                   MAX(ma20) as ma20, MAX(ma60) as ma60,
-                   MAX(dist_ma20) as dist_ma20,
-                   MAX(vol_ratio) as vol_ratio,
-                   MAX(pct_20d) as pct_20d,
-                   MAX(buy_price) as buy_price
-            FROM daily_picks 
-            WHERE {' AND '.join(where)} 
-            GROUP BY date, symbol 
+        f"""SELECT dp.date, dp.symbol, dp.name,
+                   GROUP_CONCAT(DISTINCT dp.strategy_id) as strategies,
+                   MAX(dp.close_qfq) as close_qfq,
+                   MAX(dp.ma20) as ma20, MAX(dp.ma60) as ma60,
+                   MAX(dp.dist_ma20) as dist_ma20,
+                   MAX(dp.vol_ratio) as vol_ratio,
+                   MAX(dp.pct_20d) as pct_20d,
+                   MAX(dp.buy_price) as buy_price
+            FROM daily_picks dp
+            WHERE {' AND '.join(where)}
+            GROUP BY dp.date, dp.symbol
             ORDER BY dist_ma20 DESC""",
         params
     ).fetchall()

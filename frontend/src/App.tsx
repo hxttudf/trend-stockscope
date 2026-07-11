@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import Chart, { CrosshairInfo } from './components/Chart'
 import {
-  KlineData, Signal, PickRecord, WatchlistItem,
+  KlineData, KlinePoint, Signal, PickRecord, WatchlistItem,
   searchStocks, getKline, getStockInfo, getPicks, getPickDates,
   getWatchlist, addToWatchlist, removeFromWatchlist
 } from './utils/api'
@@ -14,11 +14,34 @@ const RANGES = [
   { label: '全部', days: 9999 },
 ]
 
+const STRATEGY_TABS = [
+  { key: '',      label: '全部' },       // show all
+  { key: 'premium_b',    label: 'B' },
+  { key: 'premium_a',    label: 'A' },
+  { key: 'ultra_shrink', label: '缩' },
+  { key: 'original',     label: '原' },
+]
+
 const fmtVol = (v: number) => v >= 10000 ? (v / 10000).toFixed(2) + '万' : v.toFixed(0)
 
 interface StockInfo {
   symbol: string
   name: string
+}
+
+interface LastCandle {
+  close: number; open: number; high: number; low: number
+  volume: number; prevClose: number
+  change: number; changePct: number; date: string
+}
+
+/** Compute "至今涨幅" — 从可视范围第1根到当前收盘 */
+function calcDayGain(klineData: KlinePoint[], rangeDays: number, targetClose: number): number | null {
+  if (!klineData?.length) return null
+  const vc = Math.min(rangeDays, klineData.length)
+  const firstVis = klineData[klineData.length - vc]
+  if (!firstVis) return null
+  return ((targetClose - firstVis.close) / firstVis.close) * 100
 }
 
 export default function App() {
@@ -37,8 +60,9 @@ export default function App() {
   const [pickDates, setPickDates] = useState<{ date: string; total: number }[]>([])
   const [selectedPickDate, setSelectedPickDate] = useState('')
   const [sidebarTab, setSidebarTab] = useState<'watchlist' | 'picks'>('watchlist')
+  const [strategyFilter, setStrategyFilter] = useState('')  // '' = all
 
-  // ── Refs for crosshair direct-DOM updates (no react state re-render) ──
+  // ── Refs for crosshair direct-DOM updates ──
   const priceRef = useRef<HTMLSpanElement>(null)
   const changeRef = useRef<HTMLSpanElement>(null)
   const changePctRef = useRef<HTMLSpanElement>(null)
@@ -49,8 +73,26 @@ export default function App() {
   const extraCloseRef = useRef<HTMLSpanElement>(null)
   const extraVolRef = useRef<HTMLSpanElement>(null)
   const dayGainRef = useRef<HTMLSpanElement>(null)
-  // Store last candle values to reset crosshair display
-  const lastCandleRef = useRef<{ close: number; open: number; high: number; low: number; volume: number; prevClose: number; change: number; changePct: number; date: string } | null>(null)
+  const lastCandleRef = useRef<LastCandle | null>(null)
+
+  // Stored kline/range for updateDayGain (avoid stale closure)
+  const klineRef = useRef<KlinePoint[]>([])
+  const rangeRef = useRef(RANGES[2])
+
+  // ── update 至今涨跌幅 via refs, no React re-render ──
+  const updateDayGain = (targetClose: number) => {
+    const arr = klineRef.current
+    const dd = rangeRef.current.days
+    if (!arr.length || !dayGainRef.current) return
+    const dg = calcDayGain(arr, dd, targetClose)
+    if (dg === null) return
+    dayGainRef.current.textContent = (dg >= 0 ? '+' : '') + dg.toFixed(2) + '%'
+    dayGainRef.current.style.color = dg >= 0 ? 'var(--red)' : 'var(--green)'
+  }
+
+  // Keep refs in sync with state every render
+  if (kline?.kline) klineRef.current = kline.kline
+  rangeRef.current = range
 
   // Load watchlist and pick dates on mount
   useEffect(() => {
@@ -63,17 +105,17 @@ export default function App() {
     })
   }, [])
 
-  // Load picks for selected date
+  // Load picks for selected date + strategy filter
   useEffect(() => {
     let cancelled = false
     if (selectedPickDate) {
       setPicks([])
-      getPicks(selectedPickDate).then(data => {
+      getPicks(selectedPickDate, strategyFilter || undefined).then(data => {
         if (!cancelled) setPicks(data)
       })
     }
     return () => { cancelled = true }
-  }, [selectedPickDate])
+  }, [selectedPickDate, strategyFilter])
 
   // Load K-line for current stock
   const loadStock = useCallback(async (symbol: string, name: string) => {
@@ -85,7 +127,18 @@ export default function App() {
     setSignals(data.signals)
   }, [qfq])
 
-  // Update refs when kline data loads (update static display + cache last candle)
+  // Reload kline when qfq changes and a stock is selected
+  useEffect(() => {
+    if (currentStock) {
+      const s = currentStock
+      getKline(s.symbol, qfq, 600).then(data => {
+        setKline(data)
+        setSignals(data.signals)
+      })
+    }
+  }, [qfq])
+
+  // Update info bar when kline data loads
   useEffect(() => {
     if (!kline?.kline?.length) return
     const arr = kline.kline
@@ -93,7 +146,6 @@ export default function App() {
     const prev = arr.length > 1 ? arr[arr.length - 2] : null
     const change = last.close - (prev?.close ?? last.close)
     const changePct = prev?.close ? (change / prev.close * 100) : 0
-    const dayGain = last.open ? ((last.close - last.open) / last.open * 100) : 0
 
     lastCandleRef.current = {
       close: last.close, open: last.open, high: last.high, low: last.low,
@@ -101,7 +153,6 @@ export default function App() {
       change, changePct, date: last.time,
     }
 
-    // Update displayed values
     if (priceRef.current) priceRef.current.textContent = last.close.toFixed(2)
     if (changeRef.current) {
       changeRef.current.textContent = (change >= 0 ? '+' : '') + change.toFixed(2)
@@ -109,6 +160,7 @@ export default function App() {
     }
     if (changePctRef.current) {
       changePctRef.current.textContent = (changePct >= 0 ? '+' : '') + changePct.toFixed(2) + '%'
+      changePctRef.current.style.color = changePct >= 0 ? 'var(--red)' : 'var(--green)'
     }
     if (crosshairTimeRef.current) {
       crosshairTimeRef.current.textContent = last.time
@@ -119,11 +171,14 @@ export default function App() {
     if (extraLowRef.current) extraLowRef.current.textContent = last.low.toFixed(2)
     if (extraCloseRef.current) extraCloseRef.current.textContent = last.close.toFixed(2)
     if (extraVolRef.current) extraVolRef.current.textContent = fmtVol(last.volume)
-    if (dayGainRef.current) {
-      dayGainRef.current.textContent = (dayGain >= 0 ? '+' : '') + dayGain.toFixed(2) + '%'
-      dayGainRef.current.style.color = dayGain >= 0 ? 'var(--red)' : 'var(--green)'
-    }
+    updateDayGain(last.close)
   }, [kline])
+
+  // Recalc 至今涨幅 when range changes
+  useEffect(() => {
+    const lc = lastCandleRef.current
+    if (lc) updateDayGain(lc.close)
+  }, [range])
 
   // Crosshair handler — directly updates DOM, no React state involved
   const handleCrosshairMove = useCallback((data: CrosshairInfo | null) => {
@@ -138,6 +193,7 @@ export default function App() {
       }
       if (changePctRef.current) {
         changePctRef.current.textContent = (changePct >= 0 ? '+' : '') + changePct.toFixed(2) + '%'
+        changePctRef.current.style.color = changePct >= 0 ? 'var(--red)' : 'var(--green)'
       }
       if (crosshairTimeRef.current) {
         crosshairTimeRef.current.textContent = data.time
@@ -148,13 +204,8 @@ export default function App() {
       if (extraLowRef.current) extraLowRef.current.textContent = data.low.toFixed(2)
       if (extraCloseRef.current) extraCloseRef.current.textContent = data.close.toFixed(2)
       if (extraVolRef.current) extraVolRef.current.textContent = fmtVol(data.volume)
-      if (dayGainRef.current) {
-        const dg = data.open ? ((data.close - data.open) / data.open * 100) : 0
-        dayGainRef.current.textContent = (dg >= 0 ? '+' : '') + dg.toFixed(2) + '%'
-        dayGainRef.current.style.color = dg >= 0 ? 'var(--red)' : 'var(--green)'
-      }
+      updateDayGain(data.close)
     } else if (lc) {
-      // Reset to last candle
       if (priceRef.current) priceRef.current.textContent = lc.close.toFixed(2)
       if (changeRef.current) {
         changeRef.current.textContent = (lc.change >= 0 ? '+' : '') + lc.change.toFixed(2)
@@ -162,6 +213,7 @@ export default function App() {
       }
       if (changePctRef.current) {
         changePctRef.current.textContent = (lc.changePct >= 0 ? '+' : '') + lc.changePct.toFixed(2) + '%'
+        changePctRef.current.style.color = lc.changePct >= 0 ? 'var(--red)' : 'var(--green)'
       }
       if (crosshairTimeRef.current) {
         crosshairTimeRef.current.textContent = lc.date
@@ -172,11 +224,7 @@ export default function App() {
       if (extraLowRef.current) extraLowRef.current.textContent = lc.low.toFixed(2)
       if (extraCloseRef.current) extraCloseRef.current.textContent = lc.close.toFixed(2)
       if (extraVolRef.current) extraVolRef.current.textContent = fmtVol(lc.volume)
-      if (dayGainRef.current) {
-        const dg = lc.open ? ((lc.close - lc.open) / lc.open * 100) : 0
-        dayGainRef.current.textContent = (dg >= 0 ? '+' : '') + dg.toFixed(2) + '%'
-        dayGainRef.current.style.color = dg >= 0 ? 'var(--red)' : 'var(--green)'
-      }
+      updateDayGain(lc.close)
     }
   }, [])
 
@@ -278,15 +326,17 @@ export default function App() {
         </div>
       </div>
 
-      {/* Stock Info Bar — 同花顺风格 (DOM via refs, no re-render on crosshair) */}
+      {/* Stock Info Bar — DOM via refs, no re-render on crosshair */}
       {currentStock && (
         <div className="stock-info-bar">
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, overflow: 'hidden' }}>
             <span className="symbol">{currentStock.symbol}</span>
             <span className="name">{currentStock.name}</span>
             <span ref={priceRef} className="price">--</span>
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>涨跌</span>
             <span ref={changeRef} className="change" style={{ minWidth: 80 }}>
             </span>
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>涨跌幅</span>
             <span ref={changePctRef} style={{ fontSize: 13, minWidth: 60, display: 'inline-block' }}></span>
             <span ref={crosshairTimeRef}
               style={{ fontSize: 12, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
@@ -298,6 +348,7 @@ export default function App() {
               <span>低 <span ref={extraLowRef}>--</span></span>
               <span>收 <span ref={extraCloseRef}>--</span></span>
               <span>量 <span ref={extraVolRef}>--</span></span>
+              <span style={{ color: 'var(--text-muted)' }}>至今</span>
               <span ref={dayGainRef} style={{ fontWeight: 500 }}></span>
             </div>
             {/* 信号图例 */}
@@ -384,14 +435,27 @@ export default function App() {
             </div>
           ) : (
             <div className="watchlist-items">
-              {/* Date selector — 全部日期滚动 */}
+              {/* Date selector — 滚动 */}
               {pickDates.length > 0 && (
-                <div className="picks-date-bar" style={{ maxHeight: 80, overflowY: 'auto' }}>
+                <div className="picks-date-bar" style={{ maxHeight: 60, overflowY: 'auto' }}>
                   {pickDates.map(d => (
                     <button key={d.date}
                       className={`range-btn ${d.date === selectedPickDate ? 'active' : ''}`}
                       onClick={() => setSelectedPickDate(d.date)}>
                       {d.date.slice(5)} <span className="wl-count">{d.total}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {/* Strategy filter tabs — 全部/A/B/缩/原 */}
+              {selectedPickDate && (
+                <div className="picks-strategy-bar" style={{ display: 'flex', gap: 4, padding: '4px 8px', borderBottom: '1px solid var(--border)' }}>
+                  {STRATEGY_TABS.map(st => (
+                    <button key={st.key}
+                      className={`range-btn ${strategyFilter === st.key ? 'active' : ''}`}
+                      onClick={() => setStrategyFilter(st.key)}
+                      style={{ fontSize: 11, padding: '2px 6px' }}>
+                      {st.label}
                     </button>
                   ))}
                 </div>
