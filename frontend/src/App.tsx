@@ -183,31 +183,57 @@ export default function App() {
         </div>
       </div>
 
-      {/* Stock Info Bar */}
+      {/* Stock Info Bar — 同花顺风格 */}
       {currentStock && (
         <div className="stock-info-bar">
-          <span className="symbol">{currentStock.symbol}</span>
-          <span className="name">{currentStock.name}</span>
-          <span className="price">
-            {displayPrice?.toFixed(2) ?? '--'}
-          </span>
-          <span className={`change ${displayChange >= 0 ? 'up' : 'down'}`}>
-            {displayChange >= 0 ? '+' : ''}{displayChange.toFixed(2)}
-            {' '}
-            {displayChangePct >= 0 ? '+' : ''}{displayChangePct.toFixed(2)}%
-          </span>
-          {crosshairData && <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{crosshairData.time}</span>}
-          {/* 信号图例 */}
-          {signals.length > 0 && (
-            <div style={{ display: 'flex', gap: 6, marginLeft: 12, alignItems: 'center' }}>
-              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>信号:</span>
-              {Array.from(new Set(signals.map(s => s.type))).map(t => (
-                <span key={t} className={`signal-badge ${t}`}>
-                  {t === 'premium_b' ? '●' : t === 'premium_a' ? '■' : t === 'ultra_shrink' ? '▼' : '▲'}
-                </span>
-              ))}
-            </div>
-          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, overflow: 'hidden' }}>
+            <span className="symbol">{currentStock.symbol}</span>
+            <span className="name">{currentStock.name}</span>
+            <span className="price">{displayPrice?.toFixed(2) ?? '--'}</span>
+            <span className={`change ${displayChange >= 0 ? 'up' : 'down'}`}
+              style={{ minWidth: 80 }}>
+              {displayChange >= 0 ? '+' : ''}{displayChange.toFixed(2)}
+              {'  '}
+              <span style={{ fontSize: 13 }}>
+                {displayChangePct >= 0 ? '+' : ''}{displayChangePct.toFixed(2)}%
+              </span>
+            </span>
+            {crosshairData && (
+              <span style={{ fontSize: 12, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                {crosshairData.time}
+              </span>
+            )}
+            {/* 额外数据：今开 最高 最低 成交量 */}
+            {(() => {
+              const cd = crosshairData || (lastCandle ? {
+                open: lastCandle.open, high: lastCandle.high,
+                low: lastCandle.low, close: lastCandle.close,
+                volume: lastCandle.volume, turnover: lastCandle.turnover,
+              } : null)
+              if (!cd) return null
+              const fmtVol = (v: number) => v >= 10000 ? (v / 10000).toFixed(2) + '万' : v.toFixed(0)
+              return (
+                <div style={{ display: 'flex', gap: 10, fontSize: 11, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                  <span>开 {cd.open.toFixed(2)}</span>
+                  <span>高 {cd.high.toFixed(2)}</span>
+                  <span>低 {cd.low.toFixed(2)}</span>
+                  <span>量 {fmtVol(cd.volume)}</span>
+                </div>
+              )
+            })()}
+            {/* 信号图例 - hover显示策略名称 */}
+            {signals.length > 0 && (
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0, marginLeft: 8 }}>
+                {Array.from(new Set(signals.map(s => s.type))).map(t => (
+                  <span key={t} className={`signal-badge ${t}`} title={
+                    t === 'premium_b' ? '极品B策略' : t === 'premium_a' ? '极品A策略' : t === 'ultra_shrink' ? '超缩量策略' : '原版策略'
+                  }>
+                    {t === 'premium_b' ? '■极品B' : t === 'premium_a' ? '▲极品A' : t === 'ultra_shrink' ? '▼超缩量' : '◆原版'}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -290,7 +316,7 @@ export default function App() {
             </button>
             <button className={`wl-tab ${sidebarTab === 'picks' ? 'active' : ''}`}
               onClick={() => setSidebarTab('picks')}>
-              📋 每日选股 <span className="wl-count">{pickDates.length > 0 ? pickDates[0].total : 0}</span>
+              📋 选股 <span className="wl-count">{pickDates.length}天</span>
             </button>
           </div>
 
@@ -318,10 +344,10 @@ export default function App() {
             </div>
           ) : (
             <div className="watchlist-items">
-              {/* Date selector */}
-              {pickDates.length > 1 && (
-                <div className="picks-date-bar">
-                  {pickDates.slice(0, 10).map(d => (
+              {/* Date selector — 全部日期滚动 */}
+              {pickDates.length > 0 && (
+                <div className="picks-date-bar" style={{ maxHeight: 80, overflowY: 'auto' }}>
+                  {pickDates.map(d => (
                     <button key={d.date}
                       className={`range-btn ${d.date === selectedPickDate ? 'active' : ''}`}
                       onClick={() => setSelectedPickDate(d.date)}>

@@ -214,14 +214,14 @@ export default function Chart({ kline, signals, symbol, range, onCrosshairMove }
     ma20Ref.current?.setData(calcMA(20))
     ma60Ref.current?.setData(calcMA(60))
 
-    // Signal markers — 策略信号标注（仅形状+非红绿色，避免混淆买卖）
-    const signalConfig: Record<string, { color: string; shape: 'arrowUp' | 'arrowDown' | 'circle' | 'square' }> = {
-      premium_b:    { color: '#58a6ff',  shape: 'circle' },    // 蓝圆
-      premium_a:    { color: '#d29922',  shape: 'square' },    // 金方
-      original:     { color: '#bc8cff',  shape: 'arrowUp' },   // 紫箭上
-      ultra_shrink: { color: '#f7823b',  shape: 'arrowDown' }, // 橙箭下
+    // Signal markers — 策略信号（不同形状+中文label，不混淆买卖，无红绿）
+    const signalConfig: Record<string, { color: string; shape: 'arrowUp' | 'arrowDown' | 'square'; position: 'aboveBar' | 'belowBar'; label: string }> = {
+      premium_b:    { color: '#58a6ff',  shape: 'square',   position: 'aboveBar', label: '极品B' },
+      premium_a:    { color: '#d29922',  shape: 'arrowUp',  position: 'aboveBar', label: '极品A' },
+      original:     { color: '#bc8cff',  shape: 'square',   position: 'belowBar', label: '原版' },
+      ultra_shrink: { color: '#f7823b',  shape: 'arrowDown', position: 'aboveBar', label: '超缩量' },
     }
-    const defaultConfig = { color: '#58a6ff', shape: 'circle' as const }
+    const defaultConfig = { color: '#58a6ff', shape: 'square' as const, position: 'aboveBar' as const, label: '' }
 
     if (signals.length > 0) {
       const markers = signals
@@ -231,9 +231,10 @@ export default function Chart({ kline, signals, symbol, range, onCrosshairMove }
           const cfg = signalConfig[s.type] || defaultConfig
           return {
             time: s.date as Time,
-            position: 'aboveBar' as const,
+            position: cfg.position,
             color: cfg.color,
             shape: cfg.shape,
+            text: cfg.label,  // hover时显示中文策略名
             size: 1,
           }
         })
@@ -241,7 +242,8 @@ export default function Chart({ kline, signals, symbol, range, onCrosshairMove }
           time: Time
           position: 'aboveBar' | 'belowBar' | 'inBar'
           color: string
-          shape: 'arrowUp' | 'arrowDown' | 'circle' | 'square'
+          shape: 'arrowUp' | 'arrowDown' | 'square'
+          text: string
           size: number
         }[]
 

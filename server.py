@@ -163,7 +163,7 @@ def get_pick_dates():
     conn = db_conn(SCOPE_DB)
     cur = conn.cursor()
     rows = cur.execute(
-        "SELECT date, total_picks, strategies FROM daily_summary ORDER BY date DESC LIMIT 60"
+        "SELECT date, total_picks, strategies FROM daily_summary ORDER BY date DESC LIMIT 200"
     ).fetchall()
     conn.close()
     return jsonify([dict(r) for r in rows])
