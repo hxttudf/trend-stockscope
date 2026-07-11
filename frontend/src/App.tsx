@@ -264,7 +264,14 @@ export default function App() {
         if (b && c) {
           const pct = ((c.close - b.close) / b.close) * 100
           const days = Math.abs(ci - bi)
-          const amp = ((Math.max(b.high, c.high) - Math.min(b.low, c.low)) / b.close) * 100
+          // 区间振幅：取所有K线最高最低
+          const sIdx = Math.min(bi, ci), eIdx = Math.max(bi, ci)
+          let maxH = -Infinity, minL = Infinity
+          for (let i = sIdx; i <= eIdx; i++) {
+            if (arr[i].high > maxH) maxH = arr[i].high
+            if (arr[i].low < minL) minL = arr[i].low
+          }
+          const amp = ((maxH - minL) / b.close) * 100
           const sign = pct >= 0 ? '+' : ''
           measureRef.current.textContent = `涨幅${sign}${pct.toFixed(2)}%  天数${days}天  振幅${amp.toFixed(2)}%`
           measureRef.current.style.color = pct >= 0 ? 'var(--red)' : 'var(--green)'
@@ -302,7 +309,14 @@ export default function App() {
           const l = arr[li]
           const pct = ((l.close - b.close) / b.close) * 100
           const days = li - bi
-          const amp = ((Math.max(b.high, l.high) - Math.min(b.low, l.low)) / b.close) * 100
+          // 区间振幅：取所有K线最高最低
+          const sIdx = Math.min(bi, li), eIdx = Math.max(bi, li)
+          let maxH = -Infinity, minL = Infinity
+          for (let i = sIdx; i <= eIdx; i++) {
+            if (arr[i].high > maxH) maxH = arr[i].high
+            if (arr[i].low < minL) minL = arr[i].low
+          }
+          const amp = ((maxH - minL) / b.close) * 100
           const sign = pct >= 0 ? '+' : ''
           measureRef.current.textContent = `涨幅${sign}${pct.toFixed(2)}%  天数${days}天  振幅${amp.toFixed(2)}%`
           measureRef.current.style.color = pct >= 0 ? 'var(--red)' : 'var(--green)'
