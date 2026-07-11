@@ -19,6 +19,7 @@ interface ChartProps {
   range: number
   onCrosshairMove?: (data: CrosshairInfo | null) => void
   onChartClick?: (time: string) => void
+  benchmarkTime?: string | null
 }
 
 const COLORS = {
@@ -43,7 +44,7 @@ const KLINE_CACHE = { data: [] as KlinePoint[] }
 
 export default memo(Chart)
 
-function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick }: ChartProps) {
+function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, benchmarkTime }: ChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null)
@@ -248,37 +249,49 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick }:
     }
     const defaultConfig = { color: '#58a6ff', shape: 'square' as const, position: 'aboveBar' as const, label: '' }
 
-    if (signals.length > 0) {
-      const markers = signals
-        .map(s => {
-          const idx = kline.findIndex(k => k.time === s.date)
-          if (idx < 0) return null
-          const cfg = signalConfig[s.type] || defaultConfig
-          return {
-            time: s.date as Time,
-            position: cfg.position,
-            color: cfg.color,
-            shape: cfg.shape,
-            text: cfg.label,  // hover时显示中文策略名
-            size: 1,
-          }
-        })
-        .filter(Boolean) as {
-          time: Time
-          position: 'aboveBar' | 'belowBar' | 'inBar'
-          color: string
-          shape: 'arrowUp' | 'arrowDown' | 'square'
-          text: string
-          size: number
-        }[]
+    // Build markers: signals + benchmark
+    const markers: {
+      time: Time
+      position: 'aboveBar' | 'belowBar' | 'inBar'
+      color: string
+      shape: 'arrowUp' | 'arrowDown' | 'square' | 'circle'
+      text: string
+      size: number
+    }[] = []
 
-      if (markers.length) {
-        candleSeriesRef.current.setMarkers(markers)
-      } else {
-        candleSeriesRef.current.setMarkers([])
+    // Signal markers
+    for (const s of signals) {
+      const idx = kline.findIndex(k => k.time === s.date)
+      if (idx < 0) continue
+      const cfg = signalConfig[s.type] || defaultConfig
+      markers.push({
+        time: s.date as Time,
+        position: cfg.position,
+        color: cfg.color,
+        shape: cfg.shape,
+        text: cfg.label,
+        size: 1,
+      })
+    }
+
+    // Benchmark marker
+    if (benchmarkTime) {
+      const idx = kline.findIndex(k => k.time === benchmarkTime)
+      if (idx >= 0) {
+        markers.push({
+          time: benchmarkTime as Time,
+          position: 'belowBar',
+          color: '#f0883e',
+          shape: 'circle',
+          text: '基准',
+          size: 2,
+        })
       }
+    }
+
+    if (markers.length) {
+      candleSeriesRef.current.setMarkers(markers)
     } else {
-      // 没信号时清空
       candleSeriesRef.current?.setMarkers([])
     }
 
@@ -288,7 +301,7 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick }:
       from: candleData[candleData.length - visibleRange].time,
       to: candleData[candleData.length - 1].time,
     })
-  }, [kline, signals, symbol, range])
+  }, [kline, signals, symbol, range, benchmarkTime])
 
   return <div ref={containerRef} style={{ width: '100%', height: '100%', touchAction: 'manipulation' }} />
 }

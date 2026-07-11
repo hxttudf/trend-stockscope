@@ -266,11 +266,11 @@ export default function App() {
           const days = Math.abs(ci - bi)
           const amp = ((Math.max(b.high, c.high) - Math.min(b.low, c.low)) / b.close) * 100
           const sign = pct >= 0 ? '+' : ''
-          measureRef.current.textContent = `${sign}${pct.toFixed(2)}%  ${days}天  ${amp.toFixed(2)}%振幅`
+          measureRef.current.textContent = `涨幅${sign}${pct.toFixed(2)}%  天数${days}天  振幅${amp.toFixed(2)}%`
           measureRef.current.style.color = pct >= 0 ? 'var(--red)' : 'var(--green)'
         }
       } else if (measureRef.current) {
-        measureRef.current.textContent = benchmarkRef.current !== null ? '移动光标测量' : ''
+        measureRef.current.textContent = benchmarkRef.current !== null ? '点击设基准 - 移动光标测量' : ''
       }
     } else if (lc) {
       if (priceRef.current) priceRef.current.textContent = lc.close.toFixed(2)
@@ -304,7 +304,7 @@ export default function App() {
           const days = li - bi
           const amp = ((Math.max(b.high, l.high) - Math.min(b.low, l.low)) / b.close) * 100
           const sign = pct >= 0 ? '+' : ''
-          measureRef.current.textContent = `${sign}${pct.toFixed(2)}%  ${days}天  ${amp.toFixed(2)}%振幅`
+          measureRef.current.textContent = `涨幅${sign}${pct.toFixed(2)}%  天数${days}天  振幅${amp.toFixed(2)}%`
           measureRef.current.style.color = pct >= 0 ? 'var(--red)' : 'var(--green)'
         }
       } else if (measureRef.current) {
@@ -519,6 +519,7 @@ export default function App() {
                 range={range.days}
                 onCrosshairMove={handleCrosshairMove}
                 onChartClick={handleChartClick}
+                benchmarkTime={benchmarkIdx !== null ? kline.kline[benchmarkIdx]?.time : null}
               />
             ) : (
               <div style={{
