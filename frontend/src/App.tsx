@@ -35,13 +35,12 @@ interface LastCandle {
   change: number; changePct: number; date: string
 }
 
-/** Compute "至今涨幅" — 从可视范围第1根到当前收盘 */
-function calcDayGain(klineData: KlinePoint[], rangeDays: number, targetClose: number): number | null {
+/** "至今涨跌幅" = 光标所在K线 → 最新K线涨幅 */
+function gainToToday(klineData: KlinePoint[], targetClose: number): number | null {
   if (!klineData?.length) return null
-  const vc = Math.min(rangeDays, klineData.length)
-  const firstVis = klineData[klineData.length - vc]
-  if (!firstVis) return null
-  return ((targetClose - firstVis.close) / firstVis.close) * 100
+  const latestClose = klineData[klineData.length - 1].close
+  if (!targetClose) return null
+  return ((latestClose - targetClose) / targetClose) * 100
 }
 
 export default function App() {
@@ -75,24 +74,22 @@ export default function App() {
   const dayGainRef = useRef<HTMLSpanElement>(null)
   const lastCandleRef = useRef<LastCandle | null>(null)
 
-  // Stored kline/range for updateDayGain (avoid stale closure)
+  // Stored kline for gainToToday (avoid stale closure)
   const klineRef = useRef<KlinePoint[]>([])
-  const rangeRef = useRef(RANGES[2])
 
   // ── update 至今涨跌幅 via refs, no React re-render ──
-  const updateDayGain = (targetClose: number) => {
+  // 至今涨跌幅 = (最新收盘 - 光标收盘) / 光标收盘
+  const updateGainToToday = (hoveredClose: number) => {
     const arr = klineRef.current
-    const dd = rangeRef.current.days
     if (!arr.length || !dayGainRef.current) return
-    const dg = calcDayGain(arr, dd, targetClose)
+    const dg = gainToToday(arr, hoveredClose)
     if (dg === null) return
     dayGainRef.current.textContent = (dg >= 0 ? '+' : '') + dg.toFixed(2) + '%'
     dayGainRef.current.style.color = dg >= 0 ? 'var(--red)' : 'var(--green)'
   }
 
-  // Keep refs in sync with state every render
+  // Keep ref in sync with state every render
   if (kline?.kline) klineRef.current = kline.kline
-  rangeRef.current = range
 
   // Load watchlist and pick dates on mount
   useEffect(() => {
@@ -171,14 +168,10 @@ export default function App() {
     if (extraLowRef.current) extraLowRef.current.textContent = last.low.toFixed(2)
     if (extraCloseRef.current) extraCloseRef.current.textContent = last.close.toFixed(2)
     if (extraVolRef.current) extraVolRef.current.textContent = fmtVol(last.volume)
-    updateDayGain(last.close)
+    updateGainToToday(last.close)  // latest → latest = 0%
   }, [kline])
 
-  // Recalc 至今涨幅 when range changes
-  useEffect(() => {
-    const lc = lastCandleRef.current
-    if (lc) updateDayGain(lc.close)
-  }, [range])
+  // ── 至今涨跌幅不再依赖 range 范围 ──
 
   // Crosshair handler — directly updates DOM, no React state involved
   const handleCrosshairMove = useCallback((data: CrosshairInfo | null) => {
@@ -204,7 +197,7 @@ export default function App() {
       if (extraLowRef.current) extraLowRef.current.textContent = data.low.toFixed(2)
       if (extraCloseRef.current) extraCloseRef.current.textContent = data.close.toFixed(2)
       if (extraVolRef.current) extraVolRef.current.textContent = fmtVol(data.volume)
-      updateDayGain(lc.close)
+      updateGainToToday(data.close)  // 光标K到最新K
     } else if (lc) {
       if (priceRef.current) priceRef.current.textContent = lc.close.toFixed(2)
       if (changeRef.current) {
@@ -224,7 +217,7 @@ export default function App() {
       if (extraLowRef.current) extraLowRef.current.textContent = lc.low.toFixed(2)
       if (extraCloseRef.current) extraCloseRef.current.textContent = lc.close.toFixed(2)
       if (extraVolRef.current) extraVolRef.current.textContent = fmtVol(lc.volume)
-      updateDayGain(lc.close)
+      updateGainToToday(lc.close)  // 复位→最新到最新=0%
     }
   }, [])
 
