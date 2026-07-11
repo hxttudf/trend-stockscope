@@ -204,7 +204,7 @@ export default function App() {
       if (extraLowRef.current) extraLowRef.current.textContent = data.low.toFixed(2)
       if (extraCloseRef.current) extraCloseRef.current.textContent = data.close.toFixed(2)
       if (extraVolRef.current) extraVolRef.current.textContent = fmtVol(data.volume)
-      updateDayGain(data.close)
+      updateDayGain(lc.close)
     } else if (lc) {
       if (priceRef.current) priceRef.current.textContent = lc.close.toFixed(2)
       if (changeRef.current) {
