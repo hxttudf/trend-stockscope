@@ -1,13 +1,22 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useCallback } from 'react'
 import { createChart, IChartApi, ISeriesApi, CandlestickData, LineData, HistogramData, Time } from 'lightweight-charts'
 import { KlinePoint, Signal } from '../utils/api'
+
+interface CrosshairInfo {
+  time: string
+  open: number
+  high: number
+  low: number
+  close: number
+  prevClose: number   // 前一根K线收盘价，用于计算涨跌幅
+}
 
 interface ChartProps {
   kline: KlinePoint[]
   signals: Signal[]
   symbol: string
-  range: number // number of candles to show
-  onCrosshairMove?: (data: { time: string; open: number; high: number; low: number; close: number } | null) => void
+  range: number
+  onCrosshairMove?: (data: CrosshairInfo | null) => void
 }
 
 const COLORS = {
@@ -22,8 +31,13 @@ const COLORS = {
   ma60: '#bc8cff',
   volUp: 'rgba(242, 54, 69, 0.4)',
   volDown: 'rgba(8, 153, 129, 0.4)',
-  accent: '#58a6ff',
+  signalB: '#089981',    // premium_b — 绿色
+  signalA: '#d29922',    // premium_a — 金色
+  signalOrig: '#58a6ff', // original — 蓝色
+  signalU: '#bc8cff',    // ultra_shrink — 紫色
 }
+
+const KLINE_CACHE = { data: [] as KlinePoint[] }
 
 export default function Chart({ kline, signals, symbol, range, onCrosshairMove }: ChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -34,6 +48,28 @@ export default function Chart({ kline, signals, symbol, range, onCrosshairMove }
   const ma10Ref = useRef<ISeriesApi<'Line'> | null>(null)
   const ma20Ref = useRef<ISeriesApi<'Line'> | null>(null)
   const ma60Ref = useRef<ISeriesApi<'Line'> | null>(null)
+
+  // crosshair回调，带prevClose
+  const handleCrosshair = useCallback((param: any) => {
+    if (!param.time || !param.point) {
+      onCrosshairMove?.(null)
+      return
+    }
+    const data = param.seriesData.get(candleSeriesRef.current) as CandlestickData | undefined
+    if (data && KLINE_CACHE.data.length > 0) {
+      const timeStr = String(data.time)
+      const idx = KLINE_CACHE.data.findIndex(k => k.time === timeStr)
+      const prevClose = idx > 0 ? KLINE_CACHE.data[idx - 1].close : data.close
+      onCrosshairMove?.({
+        time: timeStr,
+        open: data.open,
+        high: data.high,
+        low: data.low,
+        close: data.close,
+        prevClose,
+      })
+    }
+  }, [])
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -73,13 +109,13 @@ export default function Chart({ kline, signals, symbol, range, onCrosshairMove }
         secondsVisible: false,
         tickMarkFormatter: (time: Time) => {
           const d = typeof time === 'string' ? time : String(time)
-          return d.slice(5) // MM-DD
+          return d.slice(5)
         },
       },
       handleScroll: { vertTouchDrag: false },
+      handleScale: { axisPressedMouseMove: false, pinch: false }, // 禁用触摸缩放
     })
 
-    // Candlestick series
     const candleSeries = chart.addCandlestickSeries({
       upColor: COLORS.red,
       downColor: COLORS.green,
@@ -90,7 +126,6 @@ export default function Chart({ kline, signals, symbol, range, onCrosshairMove }
       priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
     })
 
-    // Volume series
     const volumeSeries = chart.addHistogramSeries({
       priceFormat: { type: 'volume' },
       priceScaleId: 'volume',
@@ -99,7 +134,6 @@ export default function Chart({ kline, signals, symbol, range, onCrosshairMove }
       scaleMargins: { top: 0.8, bottom: 0 },
     })
 
-    // MA lines
     const makeMA = (color: string, width: 1 | 2 | 3 | 4) => chart.addLineSeries({
       color,
       lineWidth: width,
@@ -120,25 +154,8 @@ export default function Chart({ kline, signals, symbol, range, onCrosshairMove }
     ma20Ref.current = ma20
     ma60Ref.current = ma60
 
-    // Crosshair sync
-    chart.subscribeCrosshairMove((param) => {
-      if (!param.time || !param.point) {
-        onCrosshairMove?.(null)
-        return
-      }
-      const data = param.seriesData.get(candleSeries) as CandlestickData | undefined
-      if (data) {
-        onCrosshairMove?.({
-          time: String(data.time),
-          open: data.open,
-          high: data.high,
-          low: data.low,
-          close: data.close,
-        })
-      }
-    })
+    chart.subscribeCrosshairMove(handleCrosshair)
 
-    // Resize observer
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const { width, height } = entry.contentRect
@@ -151,11 +168,14 @@ export default function Chart({ kline, signals, symbol, range, onCrosshairMove }
       observer.disconnect()
       chart.remove()
     }
-  }, [])
+  }, [handleCrosshair])
 
   // Update data
   useEffect(() => {
     if (!candleSeriesRef.current || !volumeSeriesRef.current || !kline.length) return
+
+    // 缓存到模块变量，供crosshair回调使用
+    KLINE_CACHE.data = kline
 
     const candleData: CandlestickData[] = kline.map(k => ({
       time: k.time as Time,
@@ -171,17 +191,13 @@ export default function Chart({ kline, signals, symbol, range, onCrosshairMove }
       color: k.close >= k.open ? COLORS.volUp : COLORS.volDown,
     }))
 
-    // Calculate MAs
     const closes = kline.map(k => k.close)
     const calcMA = (period: number): LineData[] => {
       const result: LineData[] = []
       for (let i = period - 1; i < closes.length; i++) {
         let sum = 0
         for (let j = i - period + 1; j <= i; j++) sum += closes[j]
-        result.push({
-          time: kline[i].time as Time,
-          value: sum / period,
-        })
+        result.push({ time: kline[i].time as Time, value: sum / period })
       }
       return result
     }
@@ -193,27 +209,54 @@ export default function Chart({ kline, signals, symbol, range, onCrosshairMove }
     ma20Ref.current?.setData(calcMA(20))
     ma60Ref.current?.setData(calcMA(60))
 
-    // Signal markers
+    // Signal markers — 策略信号标注在K线上
+    const signalColors: Record<string, string> = {
+      premium_b: COLORS.signalB,
+      premium_a: COLORS.signalA,
+      original: COLORS.signalOrig,
+      ultra_shrink: COLORS.signalU,
+    }
+    const signalLabels: Record<string, string> = {
+      premium_b: 'B',
+      premium_a: 'A',
+      original: 'S',
+      ultra_shrink: 'U',
+    }
+
     if (signals.length > 0) {
-      const markers = signals.map(s => {
-        const idx = kline.findIndex(k => k.time === s.date)
-        const candle = idx >= 0 ? kline[idx] : null
-        if (!candle) return null
-        return {
-          time: s.date as Time,
-          position: 'aboveBar' as const,
-          color: COLORS.accent || '#58a6ff',
-          shape: 'arrowUp' as const,
-          text: s.type === 'premium_b' ? 'B' : s.type === 'premium_a' ? 'A' : s.type === 'ultra_shrink' ? 'U' : 'S',
-        }
-      }).filter(Boolean) as { time: Time; position: 'aboveBar'; color: string; shape: 'arrowUp'; text: string }[]
+      const markers = signals
+        .map(s => {
+          const idx = kline.findIndex(k => k.time === s.date)
+          if (idx < 0) return null
+          return {
+            time: s.date as Time,
+            position: 'aboveBar' as const,
+            color: signalColors[s.type] || COLORS.signalOrig,
+            shape: 'arrowUp' as const,
+            text: signalLabels[s.type] || 'S',
+            size: 1,
+          }
+        })
+        .filter(Boolean) as {
+          time: Time
+          position: 'aboveBar' | 'belowBar' | 'inBar'
+          color: string
+          shape: 'arrowUp' | 'arrowDown' | 'circle' | 'square'
+          text: string
+          size: number
+        }[]
 
       if (markers.length) {
         candleSeriesRef.current.setMarkers(markers)
+      } else {
+        candleSeriesRef.current.setMarkers([])
       }
+    } else {
+      // 没信号时清空
+      candleSeriesRef.current?.setMarkers([])
     }
 
-    // Set visible range
+    // Visible range
     const visibleRange = Math.min(range, candleData.length)
     chartRef.current?.timeScale().setVisibleRange({
       from: candleData[candleData.length - visibleRange].time,

@@ -27,7 +27,7 @@ export default function App() {
   const [currentStock, setCurrentStock] = useState<StockInfo | null>(null)
   const [kline, setKline] = useState<KlineData | null>(null)
   const [signals, setSignals] = useState<Signal[]>([])
-  const [crosshairData, setCrosshairData] = useState<{ time: string; open: number; high: number; low: number; close: number } | null>(null)
+  const [crosshairData, setCrosshairData] = useState<{ time: string; open: number; high: number; low: number; close: number; prevClose: number } | null>(null)
   const [range, setRange] = useState(RANGES[2]) // default 6m
   const [qfq, setQfq] = useState(true)
 
@@ -117,10 +117,10 @@ export default function App() {
 
   const displayPrice = crosshairData ? crosshairData.close : lastCandle?.close
   const displayChange = crosshairData
-    ? (crosshairData.close - (prevCandle?.close || crosshairData.close))
+    ? (crosshairData.close - crosshairData.prevClose)
     : changePrice
-  const displayChangePct = crosshairData && prevCandle?.close
-    ? ((crosshairData.close - prevCandle.close) / prevCandle.close * 100)
+  const displayChangePct = crosshairData && crosshairData.prevClose
+    ? ((crosshairData.close - crosshairData.prevClose) / crosshairData.prevClose * 100)
     : changePct
 
   return (
@@ -192,6 +192,17 @@ export default function App() {
             {displayChangePct >= 0 ? '+' : ''}{displayChangePct.toFixed(2)}%
           </span>
           {crosshairData && <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{crosshairData.time}</span>}
+          {/* 信号图例 */}
+          {signals.length > 0 && (
+            <div style={{ display: 'flex', gap: 6, marginLeft: 12, alignItems: 'center' }}>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>信号:</span>
+              {Array.from(new Set(signals.map(s => s.type))).map(t => (
+                <span key={t} className={`signal-badge ${t}`}>
+                  {t === 'premium_b' ? 'B' : t === 'premium_a' ? 'A' : t === 'ultra_shrink' ? 'U' : 'S'}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
