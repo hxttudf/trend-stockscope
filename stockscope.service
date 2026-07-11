@@ -1,0 +1,16 @@
+[Unit]
+Description=StockScope — A股K线看板
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/trend-stockscope
+ExecStart=/home/ubuntu/trend-stockscope/venv/bin/python /home/ubuntu/trend-stockscope/server.py 8004
+Restart=always
+RestartSec=5
+StandardOutput=append:/home/ubuntu/trend-stockscope/backend.log
+StandardError=append:/home/ubuntu/trend-stockscope/backend.log
+
+[Install]
+WantedBy=multi-user.target

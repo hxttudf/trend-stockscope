@@ -1,0 +1,10 @@
+venv/
+node_modules/
+frontend/dist/
+__pycache__/
+*.pyc
+.DS_Store
+stockscope.db
+backend.log
+.env
+*.log
