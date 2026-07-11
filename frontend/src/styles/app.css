@@ -216,8 +216,6 @@ body {
 .stock-info-bar .change {
   font-size: 14px;
   font-weight: 500;
-  min-width: 60px;
-  text-align: right;
 }
 
 .change.up { color: var(--red); }
@@ -312,11 +310,28 @@ body {
 .watchlist-item {
   display: flex;
   align-items: center;
+  gap: 4px;
   padding: 8px 12px;
   cursor: pointer;
   transition: background 0.15s;
   border-left: 3px solid transparent;
+  user-select: none;
 }
+
+.watchlist-item.drag-over {
+  border-top: 2px solid var(--accent);
+}
+
+.drag-handle {
+  color: var(--text-muted);
+  font-size: 14px;
+  cursor: grab;
+  flex-shrink: 0;
+  line-height: 1;
+  letter-spacing: -2px;
+  margin-right: 2px;
+}
+.drag-handle:active { cursor: grabbing; }
 
 .watchlist-item:hover {
   background: var(--bg-tertiary);

@@ -112,3 +112,11 @@ export async function updateWatchlistNote(symbol: string, note: string): Promise
     body: JSON.stringify({ note }),
   })
 }
+
+export async function reorderWatchlist(symbols: string[]): Promise<void> {
+  await fetch(`${API_BASE}/watchlist/reorder`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ symbols }),
+  })
+}

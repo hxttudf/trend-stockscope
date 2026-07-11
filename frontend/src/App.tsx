@@ -3,7 +3,7 @@ import Chart, { CrosshairInfo } from './components/Chart'
 import {
   KlineData, KlinePoint, Signal, PickRecord, WatchlistItem,
   searchStocks, getKline, getStockInfo, getPicks, getPickDates,
-  getWatchlist, addToWatchlist, removeFromWatchlist
+  getWatchlist, addToWatchlist, removeFromWatchlist, reorderWatchlist
 } from './utils/api'
 
 const RANGES = [
@@ -60,6 +60,7 @@ export default function App() {
   const [selectedPickDate, setSelectedPickDate] = useState('')
   const [sidebarTab, setSidebarTab] = useState<'watchlist' | 'picks'>('watchlist')
   const [strategyFilter, setStrategyFilter] = useState('')  // '' = all
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null)
 
   // ── Refs for crosshair direct-DOM updates ──
   const priceRef = useRef<HTMLSpanElement>(null)
@@ -273,6 +274,35 @@ export default function App() {
   // In watchlist?
   const isInWatchlist = currentStock ? watchlist.some(w => w.symbol === currentStock.symbol) : false
 
+  // ── Watchlist drag & drop ──
+  const dragIdx = useRef<number | null>(null)
+  const handleDragStart = (e: React.DragEvent, idx: number) => {
+    dragIdx.current = idx
+    e.dataTransfer.effectAllowed = 'move'
+  }
+  const handleDragOver = (e: React.DragEvent, idx: number) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    if (idx !== dragOverIdx) setDragOverIdx(idx)
+  }
+  const handleDragLeave = () => setDragOverIdx(null)
+  const handleDrop = async (e: React.DragEvent, dropIdx: number) => {
+    e.preventDefault()
+    setDragOverIdx(null)
+    const srcIdx = dragIdx.current
+    dragIdx.current = null
+    if (srcIdx === null || srcIdx === dropIdx) return
+    const newList = [...watchlist]
+    const [removed] = newList.splice(srcIdx, 1)
+    newList.splice(dropIdx, 0, removed)
+    setWatchlist(newList)
+    await reorderWatchlist(newList.map(w => w.symbol))
+  }
+  const handleDragEnd = () => {
+    dragIdx.current = null
+    setDragOverIdx(null)
+  }
+
   return (
     <>
       {/* Header */}
@@ -336,10 +366,9 @@ export default function App() {
             <span className="name">{currentStock.name}</span>
             <span ref={priceRef} className="price">--</span>
             <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>涨跌</span>
-            <span ref={changeRef} className="change" style={{ minWidth: 80 }}>
-            </span>
+            <span ref={changeRef} className="change"></span>
             <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>涨跌幅</span>
-            <span ref={changePctRef} style={{ fontSize: 13, minWidth: 60, display: 'inline-block' }}></span>
+            <span ref={changePctRef} style={{ fontSize: 13, display: 'inline-block' }}></span>
             <span ref={crosshairTimeRef}
               style={{ fontSize: 12, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
             </span>
@@ -421,10 +450,17 @@ export default function App() {
                   搜索股票后点击「+ 关注」添加
                 </div>
               ) : (
-                watchlist.map(item => (
+                watchlist.map((item, idx) => (
                   <div key={item.symbol}
-                    className={`watchlist-item ${currentStock?.symbol === item.symbol ? 'active' : ''}`}
+                    className={`watchlist-item ${currentStock?.symbol === item.symbol ? 'active' : ''} ${dragOverIdx === idx ? 'drag-over' : ''}`}
+                    draggable
+                    onDragStart={e => handleDragStart(e, idx)}
+                    onDragOver={e => handleDragOver(e, idx)}
+                    onDragLeave={handleDragLeave}
+                    onDrop={e => handleDrop(e, idx)}
+                    onDragEnd={handleDragEnd}
                     onClick={() => handleSelectWatchlist(item)}>
+                    <span className="drag-handle">⋮⋮</span>
                     <span className="wl-sym">{item.symbol}</span>
                     <span className="wl-name">{item.name}</span>
                     <button className="wl-remove"
@@ -450,7 +486,7 @@ export default function App() {
               </div>
               {/* Date selector — 后日期 */}
               {pickDates.length > 0 && (
-                <div className="picks-date-bar" style={{ maxHeight: 60, overflowY: 'auto' }}>
+                <div className="picks-date-bar" style={{ maxHeight: 200, overflowY: 'auto' }}>
                   {pickDates.map(d => (
                     <button key={d.date}
                       className={`range-btn ${d.date === selectedPickDate ? 'active' : ''}`}

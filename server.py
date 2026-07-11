@@ -191,7 +191,7 @@ def get_pick_dates():
 def get_watchlist():
     conn = db_conn(SCOPE_DB)
     cur = conn.cursor()
-    rows = cur.execute("SELECT * FROM watchlist ORDER BY added_at DESC").fetchall()
+    rows = cur.execute("SELECT * FROM watchlist ORDER BY sort_order ASC, added_at DESC").fetchall()
     conn.close()
     return jsonify([dict(r) for r in rows])
 
@@ -236,6 +236,18 @@ def update_watchlist_note(symbol):
     note = data.get("note", "")
     conn = db_conn(SCOPE_DB)
     conn.execute("UPDATE watchlist SET note = ? WHERE symbol = ?", (note, symbol))
+    conn.commit()
+    conn.close()
+    return jsonify({"status": "ok"})
+
+
+@app.route("/api/watchlist/reorder", methods=["PUT"])
+def reorder_watchlist():
+    data = request.get_json()
+    symbols = data.get("symbols", [])
+    conn = db_conn(SCOPE_DB)
+    for i, sym in enumerate(symbols):
+        conn.execute("UPDATE watchlist SET sort_order = ? WHERE symbol = ?", (i, sym))
     conn.commit()
     conn.close()
     return jsonify({"status": "ok"})
