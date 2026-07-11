@@ -55,16 +55,15 @@ def get_kline(symbol):
     
     if use_qfq:
         rows = cur.execute(
-            """SELECT date, open, high, low, 
-                      close_qfq as close, volume, turnover
+            """SELECT date, open, high, low, close, close_qfq, volume, turnover
                FROM stock_daily 
-               WHERE symbol = ? 
+               WHERE symbol = ? AND close_qfq IS NOT NULL AND close > 0
                ORDER BY date DESC LIMIT ?""",
             (symbol, limit)
         ).fetchall()
     else:
         rows = cur.execute(
-            """SELECT date, open, high, low, close, volume, turnover
+            """SELECT date, open, high, low, close, close_qfq, volume, turnover
                FROM stock_daily 
                WHERE symbol = ? 
                ORDER BY date DESC LIMIT ?""",
@@ -75,12 +74,23 @@ def get_kline(symbol):
     
     kline = []
     for r in reversed(rows):
+        if use_qfq and r["close_qfq"] and r["close"] and r["close"] > 0:
+            ratio = r["close_qfq"] / r["close"]
+            ohlc_open = r["open"] * ratio
+            ohlc_high = r["high"] * ratio
+            ohlc_low = r["low"] * ratio
+            ohlc_close = r["close_qfq"]
+        else:
+            ohlc_open = r["open"]
+            ohlc_high = r["high"]
+            ohlc_low = r["low"]
+            ohlc_close = r["close"]
         kline.append({
             "time": r["date"],
-            "open": r["open"],
-            "high": r["high"],
-            "low": r["low"],
-            "close": r["close"],
+            "open": round(ohlc_open, 2),
+            "high": round(ohlc_high, 2),
+            "low": round(ohlc_low, 2),
+            "close": round(ohlc_close, 2),
             "volume": r["volume"],
             "turnover": r["turnover"] if r["turnover"] else 0,
         })
