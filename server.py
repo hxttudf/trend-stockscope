@@ -134,12 +134,28 @@ def get_picks():
         params.append(strategy)
     
     rows = cur.execute(
-        f"SELECT * FROM daily_picks WHERE {' AND '.join(where)} ORDER BY dist_ma20 DESC",
+        f"""SELECT date, symbol, name, 
+                   GROUP_CONCAT(DISTINCT strategy_id) as strategies,
+                   MAX(close_qfq) as close_qfq,
+                   MAX(ma20) as ma20, MAX(ma60) as ma60,
+                   MAX(dist_ma20) as dist_ma20,
+                   MAX(vol_ratio) as vol_ratio,
+                   MAX(pct_20d) as pct_20d,
+                   MAX(buy_price) as buy_price
+            FROM daily_picks 
+            WHERE {' AND '.join(where)} 
+            GROUP BY date, symbol 
+            ORDER BY dist_ma20 DESC""",
         params
     ).fetchall()
     conn.close()
     
-    return jsonify([dict(r) for r in rows])
+    result = []
+    for r in rows:
+        d = dict(r)
+        d["strategy_id"] = d.pop("strategies")
+        result.append(d)
+    return jsonify(result)
 
 
 @app.route("/api/picks/dates")

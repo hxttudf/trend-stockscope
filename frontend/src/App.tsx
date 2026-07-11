@@ -50,9 +50,14 @@ export default function App() {
 
   // Load picks for selected date
   useEffect(() => {
+    let cancelled = false
     if (selectedPickDate) {
-      getPicks(selectedPickDate).then(setPicks)
+      setPicks([]) // 先清空再加载，避免残留
+      getPicks(selectedPickDate).then(data => {
+        if (!cancelled) setPicks(data)
+      })
     }
+    return () => { cancelled = true }
   }, [selectedPickDate])
 
   // Load K-line for current stock
@@ -198,7 +203,7 @@ export default function App() {
               <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>信号:</span>
               {Array.from(new Set(signals.map(s => s.type))).map(t => (
                 <span key={t} className={`signal-badge ${t}`}>
-                  {t === 'premium_b' ? 'B' : t === 'premium_a' ? 'A' : t === 'ultra_shrink' ? 'U' : 'S'}
+                  {t === 'premium_b' ? '●' : t === 'premium_a' ? '■' : t === 'ultra_shrink' ? '▼' : '▲'}
                 </span>
               ))}
             </div>
@@ -341,8 +346,12 @@ export default function App() {
                       <span className="wl-name">{p.name}</span>
                     </div>
                     <div className="pc-tags" style={{ flexShrink: 0 }}>
+                      {p.strategy_id?.split(',').map((st: string) => (
+                        <span key={st} className={`pick-tag ${st.trim()}`}>
+                          {st.trim() === 'premium_b' ? 'B' : st.trim() === 'premium_a' ? 'A' : st.trim() === 'ultra_shrink' ? '缩' : '原'}
+                        </span>
+                      ))}
                       <span className="pick-tag">{p.dist_ma20?.toFixed(1)}%</span>
-                      <span className="pick-tag">量{p.vol_ratio?.toFixed(2)}</span>
                     </div>
                   </div>
                 ))

@@ -113,7 +113,12 @@ export default function Chart({ kline, signals, symbol, range, onCrosshairMove }
         },
       },
       handleScroll: { vertTouchDrag: false },
-      handleScale: { axisPressedMouseMove: false, pinch: false }, // 禁用触摸缩放
+      handleScale: {
+        axisPressedMouseMove: false,
+        pinch: false,
+        mouseWheel: false,
+        axisDoubleClickReset: false,
+      }, // 禁用触摸缩放
     })
 
     const candleSeries = chart.addCandlestickSeries({
@@ -209,31 +214,26 @@ export default function Chart({ kline, signals, symbol, range, onCrosshairMove }
     ma20Ref.current?.setData(calcMA(20))
     ma60Ref.current?.setData(calcMA(60))
 
-    // Signal markers — 策略信号标注在K线上
-    const signalColors: Record<string, string> = {
-      premium_b: COLORS.signalB,
-      premium_a: COLORS.signalA,
-      original: COLORS.signalOrig,
-      ultra_shrink: COLORS.signalU,
+    // Signal markers — 策略信号标注（仅形状+非红绿色，避免混淆买卖）
+    const signalConfig: Record<string, { color: string; shape: 'arrowUp' | 'arrowDown' | 'circle' | 'square' }> = {
+      premium_b:    { color: '#58a6ff',  shape: 'circle' },    // 蓝圆
+      premium_a:    { color: '#d29922',  shape: 'square' },    // 金方
+      original:     { color: '#bc8cff',  shape: 'arrowUp' },   // 紫箭上
+      ultra_shrink: { color: '#f7823b',  shape: 'arrowDown' }, // 橙箭下
     }
-    const signalLabels: Record<string, string> = {
-      premium_b: 'B',
-      premium_a: 'A',
-      original: 'S',
-      ultra_shrink: 'U',
-    }
+    const defaultConfig = { color: '#58a6ff', shape: 'circle' as const }
 
     if (signals.length > 0) {
       const markers = signals
         .map(s => {
           const idx = kline.findIndex(k => k.time === s.date)
           if (idx < 0) return null
+          const cfg = signalConfig[s.type] || defaultConfig
           return {
             time: s.date as Time,
             position: 'aboveBar' as const,
-            color: signalColors[s.type] || COLORS.signalOrig,
-            shape: 'arrowUp' as const,
-            text: signalLabels[s.type] || 'S',
+            color: cfg.color,
+            shape: cfg.shape,
             size: 1,
           }
         })
@@ -242,7 +242,6 @@ export default function Chart({ kline, signals, symbol, range, onCrosshairMove }
           position: 'aboveBar' | 'belowBar' | 'inBar'
           color: string
           shape: 'arrowUp' | 'arrowDown' | 'circle' | 'square'
-          text: string
           size: number
         }[]
 
@@ -264,5 +263,5 @@ export default function Chart({ kline, signals, symbol, range, onCrosshairMove }
     })
   }, [kline, signals, symbol, range])
 
-  return <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+  return <div ref={containerRef} style={{ width: '100%', height: '100%', touchAction: 'manipulation' }} />
 }
