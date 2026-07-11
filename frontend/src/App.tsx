@@ -46,9 +46,11 @@ export default function App() {
   const extraOpenRef = useRef<HTMLSpanElement>(null)
   const extraHighRef = useRef<HTMLSpanElement>(null)
   const extraLowRef = useRef<HTMLSpanElement>(null)
+  const extraCloseRef = useRef<HTMLSpanElement>(null)
   const extraVolRef = useRef<HTMLSpanElement>(null)
+  const dayGainRef = useRef<HTMLSpanElement>(null)
   // Store last candle values to reset crosshair display
-  const lastCandleRef = useRef<{ close: number; open: number; high: number; low: number; volume: number; prevClose: number; change: number; changePct: number } | null>(null)
+  const lastCandleRef = useRef<{ close: number; open: number; high: number; low: number; volume: number; prevClose: number; change: number; changePct: number; date: string } | null>(null)
 
   // Load watchlist and pick dates on mount
   useEffect(() => {
@@ -91,11 +93,12 @@ export default function App() {
     const prev = arr.length > 1 ? arr[arr.length - 2] : null
     const change = last.close - (prev?.close ?? last.close)
     const changePct = prev?.close ? (change / prev.close * 100) : 0
+    const dayGain = last.open ? ((last.close - last.open) / last.open * 100) : 0
 
     lastCandleRef.current = {
       close: last.close, open: last.open, high: last.high, low: last.low,
       volume: last.volume, prevClose: prev?.close ?? last.close,
-      change, changePct,
+      change, changePct, date: last.time,
     }
 
     // Update displayed values
@@ -107,11 +110,19 @@ export default function App() {
     if (changePctRef.current) {
       changePctRef.current.textContent = (changePct >= 0 ? '+' : '') + changePct.toFixed(2) + '%'
     }
-    if (crosshairTimeRef.current) crosshairTimeRef.current.style.display = 'none'
+    if (crosshairTimeRef.current) {
+      crosshairTimeRef.current.textContent = last.time
+      crosshairTimeRef.current.style.display = ''
+    }
     if (extraOpenRef.current) extraOpenRef.current.textContent = last.open.toFixed(2)
     if (extraHighRef.current) extraHighRef.current.textContent = last.high.toFixed(2)
     if (extraLowRef.current) extraLowRef.current.textContent = last.low.toFixed(2)
+    if (extraCloseRef.current) extraCloseRef.current.textContent = last.close.toFixed(2)
     if (extraVolRef.current) extraVolRef.current.textContent = fmtVol(last.volume)
+    if (dayGainRef.current) {
+      dayGainRef.current.textContent = (dayGain >= 0 ? '+' : '') + dayGain.toFixed(2) + '%'
+      dayGainRef.current.style.color = dayGain >= 0 ? 'var(--red)' : 'var(--green)'
+    }
   }, [kline])
 
   // Crosshair handler — directly updates DOM, no React state involved
@@ -135,7 +146,13 @@ export default function App() {
       if (extraOpenRef.current) extraOpenRef.current.textContent = data.open.toFixed(2)
       if (extraHighRef.current) extraHighRef.current.textContent = data.high.toFixed(2)
       if (extraLowRef.current) extraLowRef.current.textContent = data.low.toFixed(2)
+      if (extraCloseRef.current) extraCloseRef.current.textContent = data.close.toFixed(2)
       if (extraVolRef.current) extraVolRef.current.textContent = fmtVol(data.volume)
+      if (dayGainRef.current) {
+        const dg = data.open ? ((data.close - data.open) / data.open * 100) : 0
+        dayGainRef.current.textContent = (dg >= 0 ? '+' : '') + dg.toFixed(2) + '%'
+        dayGainRef.current.style.color = dg >= 0 ? 'var(--red)' : 'var(--green)'
+      }
     } else if (lc) {
       // Reset to last candle
       if (priceRef.current) priceRef.current.textContent = lc.close.toFixed(2)
@@ -146,11 +163,20 @@ export default function App() {
       if (changePctRef.current) {
         changePctRef.current.textContent = (lc.changePct >= 0 ? '+' : '') + lc.changePct.toFixed(2) + '%'
       }
-      if (crosshairTimeRef.current) crosshairTimeRef.current.style.display = 'none'
+      if (crosshairTimeRef.current) {
+        crosshairTimeRef.current.textContent = lc.date
+        crosshairTimeRef.current.style.display = ''
+      }
       if (extraOpenRef.current) extraOpenRef.current.textContent = lc.open.toFixed(2)
       if (extraHighRef.current) extraHighRef.current.textContent = lc.high.toFixed(2)
       if (extraLowRef.current) extraLowRef.current.textContent = lc.low.toFixed(2)
+      if (extraCloseRef.current) extraCloseRef.current.textContent = lc.close.toFixed(2)
       if (extraVolRef.current) extraVolRef.current.textContent = fmtVol(lc.volume)
+      if (dayGainRef.current) {
+        const dg = lc.open ? ((lc.close - lc.open) / lc.open * 100) : 0
+        dayGainRef.current.textContent = (dg >= 0 ? '+' : '') + dg.toFixed(2) + '%'
+        dayGainRef.current.style.color = dg >= 0 ? 'var(--red)' : 'var(--green)'
+      }
     }
   }, [])
 
@@ -263,14 +289,16 @@ export default function App() {
             </span>
             <span ref={changePctRef} style={{ fontSize: 13, minWidth: 60, display: 'inline-block' }}></span>
             <span ref={crosshairTimeRef}
-              style={{ fontSize: 12, color: 'var(--text-muted)', whiteSpace: 'nowrap', display: 'none' }}>
+              style={{ fontSize: 12, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
             </span>
-            {/* 额外数据：今开 最高 最低 成交量 */}
+            {/* 额外数据：开 高 低 收 量 至今涨幅 */}
             <div style={{ display: 'flex', gap: 10, fontSize: 11, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
               <span>开 <span ref={extraOpenRef}>--</span></span>
               <span>高 <span ref={extraHighRef}>--</span></span>
               <span>低 <span ref={extraLowRef}>--</span></span>
+              <span>收 <span ref={extraCloseRef}>--</span></span>
               <span>量 <span ref={extraVolRef}>--</span></span>
+              <span ref={dayGainRef} style={{ fontWeight: 500 }}></span>
             </div>
             {/* 信号图例 */}
             {signals.length > 0 && (
