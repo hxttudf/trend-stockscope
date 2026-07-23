@@ -16,7 +16,7 @@ def sync_all():
     cur = trend_conn.cursor()
     rows = cur.execute(
         """SELECT date, strategy_id, symbol, name, close_qfq, ma20, ma60,
-                  dist_ma20, vol_ratio, pct_20d, volume, avg_vol_20d, buy_price
+                  dist_ma20, vol_ratio, pct_20d, buy_price
            FROM daily_picks ORDER BY date"""
     ).fetchall()
     
@@ -33,12 +33,12 @@ def sync_all():
             scope_conn.execute(
                 """INSERT OR REPLACE INTO daily_picks 
                    (date, strategy_id, symbol, name, close_qfq, ma20, ma60,
-                    dist_ma20, vol_ratio, pct_20d, volume, avg_vol_20d, buy_price)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    dist_ma20, vol_ratio, pct_20d, buy_price)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
                 (r["date"], r["strategy_id"], r["symbol"], r["name"],
                  r["close_qfq"], r["ma20"], r["ma60"],
                  r["dist_ma20"], r["vol_ratio"], r["pct_20d"],
-                 r["volume"], r["avg_vol_20d"], r["buy_price"])
+                 r["buy_price"])
             )
             inserted += 1
             key = r["date"]

@@ -20,6 +20,7 @@ interface ChartProps {
   onCrosshairMove?: (data: CrosshairInfo | null) => void
   onChartClick?: (time: string) => void
   benchmarkTime?: string | null
+  focusDate?: string | null
 }
 
 const COLORS = {
@@ -35,6 +36,7 @@ const COLORS = {
   volUp: 'rgba(242, 54, 69, 0.4)',
   volDown: 'rgba(8, 153, 129, 0.4)',
   signalB: '#089981',    // premium_b — 绿色
+  signalB2: '#f0883e',   // premium_b2 — 橙色
   signalA: '#d29922',    // premium_a — 金色
   signalOrig: '#58a6ff', // original — 蓝色
   signalU: '#bc8cff',    // ultra_shrink — 紫色
@@ -44,7 +46,7 @@ const KLINE_CACHE = { data: [] as KlinePoint[] }
 
 export default memo(Chart)
 
-function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, benchmarkTime }: ChartProps) {
+function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, benchmarkTime, focusDate }: ChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null)
@@ -53,6 +55,7 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, b
   const ma10Ref = useRef<ISeriesApi<'Line'> | null>(null)
   const ma20Ref = useRef<ISeriesApi<'Line'> | null>(null)
   const ma60Ref = useRef<ISeriesApi<'Line'> | null>(null)
+  const signalScatterRef = useRef<ISeriesApi<'Line'> | null>(null)
   // 用ref存最新onCrosshairMove，避免闭包捕获旧值
   const onCrosshairMoveRef = useRef(onCrosshairMove)
   onCrosshairMoveRef.current = onCrosshairMove
@@ -170,6 +173,12 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, b
     ma10Ref.current = ma10
     ma20Ref.current = ma20
     ma60Ref.current = ma60
+    signalScatterRef.current = chart.addLineSeries({
+      color: 'transparent',
+      lineWidth: 1, lastValueVisible: false, priceLineVisible: false,
+      pointMarkersVisible: true,
+      priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
+    })
 
     chart.subscribeCrosshairMove(handleCrosshair)
 
@@ -240,68 +249,63 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, b
     ma20Ref.current?.setData(calcMA(20))
     ma60Ref.current?.setData(calcMA(60))
 
-    // Signal markers — 策略信号（不同形状+中文label，不混淆买卖，无红绿）
+    // Build signal markers
     const signalConfig: Record<string, { color: string; shape: 'arrowUp' | 'arrowDown' | 'square'; position: 'aboveBar' | 'belowBar'; label: string }> = {
-      premium_b:    { color: '#58a6ff',  shape: 'square',   position: 'aboveBar', label: '极品B' },
-      premium_a:    { color: '#d29922',  shape: 'arrowUp',  position: 'aboveBar', label: '极品A' },
-      original:     { color: '#bc8cff',  shape: 'square',   position: 'belowBar', label: '原版' },
-      ultra_shrink: { color: '#f7823b',  shape: 'arrowDown', position: 'aboveBar', label: '超缩量' },
+      premium_b:    { color: '#58a6ff',  shape: 'square',   position: 'aboveBar', label: 'B' },
+      premium_b2:   { color: '#f0883e',  shape: 'square',   position: 'aboveBar', label: 'B2' },
+      premium_a:    { color: '#d29922',  shape: 'arrowUp',  position: 'aboveBar', label: 'A' },
+      original:     { color: '#bc8cff',  shape: 'square',   position: 'belowBar', label: 'O' },
+      ultra_shrink: { color: '#f7823b',  shape: 'arrowDown', position: 'aboveBar', label: '缩' },
     }
-    const defaultConfig = { color: '#58a6ff', shape: 'square' as const, position: 'aboveBar' as const, label: '' }
+    const defaultCfg = { color: '#58a6ff', shape: 'square' as const, position: 'aboveBar' as const, label: '' }
 
-    // Build markers: signals + benchmark
-    const markers: {
-      time: Time
-      position: 'aboveBar' | 'belowBar' | 'inBar'
-      color: string
-      shape: 'arrowUp' | 'arrowDown' | 'square' | 'circle'
-      text: string
-      size: number
-    }[] = []
+    const markers: { time: Time; position: 'aboveBar' | 'belowBar' | 'inBar'; color: string; shape: 'arrowUp' | 'arrowDown' | 'square' | 'circle'; text: string; size: number }[] = []
 
-    // Signal markers
     for (const s of signals) {
-      const idx = kline.findIndex(k => k.time === s.date)
-      if (idx < 0) continue
-      const cfg = signalConfig[s.type] || defaultConfig
-      markers.push({
-        time: s.date as Time,
-        position: cfg.position,
-        color: cfg.color,
-        shape: cfg.shape,
-        text: cfg.label,
-        size: 1,
-      })
+      if (kline.findIndex(k => k.time === s.date) < 0) continue
+      const cfg = signalConfig[s.type] || defaultCfg
+      markers.push({ time: s.date as Time, position: cfg.position, color: cfg.color, shape: cfg.shape, text: cfg.label, size: 2 })
     }
 
     // Benchmark marker
     if (benchmarkTime) {
       const idx = kline.findIndex(k => k.time === benchmarkTime)
       if (idx >= 0) {
-        markers.push({
-          time: benchmarkTime as Time,
-          position: 'belowBar',
-          color: '#f0883e',
-          shape: 'circle',
-          text: '基准',
-          size: 2,
-        })
+        markers.push({ time: benchmarkTime as Time, position: 'belowBar', color: '#f0883e', shape: 'circle', text: '基准', size: 2 })
       }
     }
 
-    if (markers.length) {
-      candleSeriesRef.current.setMarkers(markers)
+    // Step 1: 先设可见范围（缩放）
+    if (focusDate) {
+      const focusIdx = candleData.findIndex(d => String(d.time) === focusDate)
+      if (focusIdx >= 0) {
+        const hr = 80
+        chartRef.current?.timeScale().setVisibleRange({ from: candleData[Math.max(0, focusIdx - hr)].time, to: candleData[Math.min(candleData.length - 1, focusIdx + hr)].time })
+      }
     } else {
-      candleSeriesRef.current?.setMarkers([])
+      const vr = Math.min(range, candleData.length)
+      chartRef.current?.timeScale().setVisibleRange({ from: candleData[candleData.length - vr].time, to: candleData[candleData.length - 1].time })
     }
 
-    // Visible range
-    const visibleRange = Math.min(range, candleData.length)
-    chartRef.current?.timeScale().setVisibleRange({
-      from: candleData[candleData.length - visibleRange].time,
-      to: candleData[candleData.length - 1].time,
-    })
-  }, [kline, signals, symbol, range, benchmarkTime])
+    // Step 2: 设标记 — lightweight-charts v4.2.3 每系列最多渲染 10 个 marker，所以分批
+    // 每批不超过 10 个（留 1 个给 benchmark），多批用不同 series 添加
+    if (markers.length) candleSeriesRef.current.setMarkers(markers.slice(0, 10))
+    if (markers.length > 10) {
+      const extra = markers.slice(10)
+      const sigSeries = chartRef.current?.addLineSeries({
+        color: 'transparent', lineWidth: 1, lastValueVisible: false, priceLineVisible: false,
+        priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
+      })
+      // LineSeries 需要有数据点，marker 才会渲染
+      const sigData: { time: Time; value: number }[] = []
+      for (const m of extra) {
+        const idx = kline.findIndex(k => k.time === String(m.time))
+        sigData.push({ time: m.time, value: idx >= 0 ? kline[idx].close : 0 })
+      }
+      sigSeries?.setData(sigData)
+      sigSeries?.setMarkers(extra)
+    }
+  }, [kline, signals, symbol, range, focusDate, benchmarkTime])
 
   return <div ref={containerRef} style={{ width: '100%', height: '100%', touchAction: 'manipulation' }} />
 }

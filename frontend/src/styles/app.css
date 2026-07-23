@@ -523,23 +523,28 @@ body {
 }
 
 .signal-badge.premium_b {
-  background: rgba(8,153,129,0.15);
-  color: #089981;
+  background: rgba(255,217,61,0.15);
+  color: #ffd93d;
+}
+
+.signal-badge.premium_b2 {
+  background: rgba(240,136,62,0.15);
+  color: #f0883e;
 }
 
 .signal-badge.premium_a {
-  background: rgba(210,153,34,0.15);
-  color: #d29922;
+  background: rgba(212,212,212,0.15);
+  color: #d4d4d4;
 }
 
 .signal-badge.original {
-  background: rgba(88,166,255,0.15);
-  color: #58a6ff;
+  background: rgba(0,210,211,0.15);
+  color: #00d2d3;
 }
 
 .signal-badge.ultra_shrink {
-  background: rgba(188,140,255,0.15);
-  color: #bc8cff;
+  background: rgba(255,159,243,0.15);
+  color: #ff9ff3;
 }
 
 /* ── Picks Date Bar (sidebar) ───────────────────────────── */

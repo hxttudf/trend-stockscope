@@ -48,7 +48,6 @@ def search_stocks():
 @app.route("/api/kline/<symbol>")
 def get_kline(symbol):
     use_qfq = request.args.get("qfq", "1") == "1"
-    limit = int(request.args.get("limit", "500"))
     
     conn = db_conn(SEQUOIA_DB)
     cur = conn.cursor()
@@ -59,22 +58,22 @@ def get_kline(symbol):
                       close_qfq as close, volume, turnover
                FROM stock_daily 
                WHERE symbol = ? 
-               ORDER BY date DESC LIMIT ?""",
-            (symbol, limit)
+               ORDER BY date""",
+            (symbol,)
         ).fetchall()
     else:
         rows = cur.execute(
             """SELECT date, open, high, low, close, volume, turnover
                FROM stock_daily 
                WHERE symbol = ? 
-               ORDER BY date DESC LIMIT ?""",
-            (symbol, limit)
+               ORDER BY date""",
+            (symbol,)
         ).fetchall()
     
     conn.close()
     
     kline = []
-    for r in reversed(rows):
+    for r in rows:
         kline.append({
             "time": r["date"],
             "open": r["open"],

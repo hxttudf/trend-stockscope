@@ -8,3 +8,5 @@ stockscope.db
 backend.log
 .env
 *.log
+stockscope.db-shm
+stockscope.db-wal

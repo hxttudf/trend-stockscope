@@ -48,39 +48,44 @@ def search_stocks():
 @app.route("/api/kline/<symbol>")
 def get_kline(symbol):
     use_qfq = request.args.get("qfq", "1") == "1"
-    limit = int(request.args.get("limit", "500"))
     
     conn = db_conn(SEQUOIA_DB)
     cur = conn.cursor()
     
     if use_qfq:
         rows = cur.execute(
-            """SELECT date, open_qfq, high_qfq, low_qfq, close_qfq, volume, turnover
+            """SELECT date, open, high, low, close, open_qfq, high_qfq, low_qfq, close_qfq, volume, turnover
                FROM stock_daily 
                WHERE symbol = ? AND close_qfq IS NOT NULL AND close > 0
-               ORDER BY date DESC LIMIT ?""",
-            (symbol, limit)
+               ORDER BY date""",
+            (symbol,)
         ).fetchall()
     else:
         rows = cur.execute(
             """SELECT date, open, high, low, close, close_qfq, volume, turnover
                FROM stock_daily 
                WHERE symbol = ? 
-               ORDER BY date DESC LIMIT ?""",
-            (symbol, limit)
+               ORDER BY date""",
+            (symbol,)
         ).fetchall()
     
     conn.close()
     
     kline = []
-    for r in reversed(rows):
+    for r in rows:
         if use_qfq and r["close_qfq"] and r["close_qfq"] > 0:
+            # 前复权 OHLC：优先用预计算值；若为 NULL 则实时计算（新数据可能未回填）
+            ratio = r["close_qfq"] / r["close"] if r["close"] and r["close"] > 0 else 1.0
+            o_qfq = r["open_qfq"] if r["open_qfq"] else (round(r["open"] * ratio, 2) if r["open"] else 0)
+            h_qfq = r["high_qfq"] if r["high_qfq"] else (round(r["high"] * ratio, 2) if r["high"] else 0)
+            l_qfq = r["low_qfq"] if r["low_qfq"] else (round(r["low"] * ratio, 2) if r["low"] else 0)
+            c_qfq = round(r["close_qfq"], 2)
             kline.append({
                 "time": r["date"],
-                "open": round(r["open_qfq"], 2) if r["open_qfq"] else 0,
-                "high": round(r["high_qfq"], 2) if r["high_qfq"] else 0,
-                "low": round(r["low_qfq"], 2) if r["low_qfq"] else 0,
-                "close": round(r["close_qfq"], 2),
+                "open": o_qfq,
+                "high": h_qfq,
+                "low": l_qfq,
+                "close": c_qfq,
                 "volume": r["volume"],
                 "turnover": r["turnover"] if r["turnover"] else 0,
             })

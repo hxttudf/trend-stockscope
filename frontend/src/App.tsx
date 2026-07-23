@@ -17,6 +17,7 @@ const RANGES = [
 const STRATEGY_TABS = [
   { key: '',      label: '全部' },       // show all
   { key: 'premium_b',    label: 'B' },
+  { key: 'premium_b2',   label: 'B2' },
   { key: 'premium_a',    label: 'A' },
   { key: 'ultra_shrink', label: '缩' },
   { key: 'original',     label: '原' },
@@ -84,6 +85,7 @@ export default function App() {
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null)
   const [measureMode, setMeasureMode] = useState(false)
   const [benchmarkIdx, setBenchmarkIdx] = useState<number | null>(null)
+  const [focusDate, setFocusDate] = useState<string | null>(null)  // 选股跳转时聚焦的日期
 
   // ── Refs for crosshair direct-DOM updates ──
   const priceRef = useRef<HTMLSpanElement>(null)
@@ -159,23 +161,36 @@ export default function App() {
   }, [selectedPickDate, strategyFilter])
 
   // Load K-line for current stock
-  const loadStock = useCallback(async (symbol: string, name: string) => {
+  const loadStock = useCallback(async (symbol: string, name: string, signalDate?: string) => {
     setCurrentStock({ symbol, name })
     setSearchQuery('')
     setShowSearch(false)
     setBenchmarkIdx(null)  // 切股票清基准
-    const data = await getKline(symbol, qfq, 600)
+    const data = await getKline(symbol, qfq, 1000)
     setKline(data)
     setSignals(data.signals)
-  }, [qfq])
+    // 有指定信号日期则跳转到该日期，否则跳转到最新信号
+    if (signalDate) {
+      setFocusDate(signalDate)
+    } else if (data.signals?.length) {
+      const latestSignal = data.signals.reduce((latest, s) => s.date > latest ? s.date : latest, data.signals[0].date)
+      setFocusDate(latestSignal)
+    } else {
+      setFocusDate(null)
+    }
+  }, [qfq, selectedPickDate])
 
   // Reload kline when qfq changes and a stock is selected
   useEffect(() => {
     if (currentStock) {
       const s = currentStock
-      getKline(s.symbol, qfq, 600).then(data => {
+      getKline(s.symbol, qfq, 1000).then(data => {
         setKline(data)
         setSignals(data.signals)
+        if (data.signals?.length) {
+          const latest = data.signals.reduce((a, b) => a.date > b.date ? a : b)
+          setFocusDate(latest.date)
+        }
       })
     }
   }, [qfq])
@@ -362,9 +377,9 @@ export default function App() {
     loadStock(item.symbol, item.name)
   }
 
-  // Select from picks
+  // Select from picks — jump to signal date
   const handleSelectPick = (pick: PickRecord) => {
-    loadStock(pick.symbol, pick.name)
+    loadStock(pick.symbol, pick.name, pick.date)
   }
 
   // Chart click → toggle benchmark
@@ -452,7 +467,7 @@ export default function App() {
             {RANGES.map(r => (
               <button key={r.label}
                 className={`range-btn ${range.label === r.label ? 'active' : ''}`}
-                onClick={() => setRange(r)}>
+                onClick={() => { setRange(r); setFocusDate(null); }}>
                 {r.label}
               </button>
             ))}
@@ -491,18 +506,14 @@ export default function App() {
               <span style={{ color: 'var(--text-muted)' }}>至今</span>
               <span ref={dayGainRef} style={{ fontWeight: 500 }}></span>
             </div>
-            {/* 信号图例 */}
-            {signals.length > 0 && (
-              <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0, marginLeft: 8 }}>
-                {Array.from(new Set(signals.map(s => s.type))).map(t => (
-                  <span key={t} className={`signal-badge ${t}`} title={
-                    t === 'premium_b' ? '极品B策略' : t === 'premium_a' ? '极品A策略' : t === 'ultra_shrink' ? '超缩量策略' : '原版策略'
-                  }>
-                    {t === 'premium_b' ? '■极品B' : t === 'premium_a' ? '▲极品A' : t === 'ultra_shrink' ? '▼超缩量' : '◆原版'}
-                  </span>
-                ))}
-              </div>
-            )}
+            {/* 信号图例 — 固定展示全部5个策略 */}
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0, marginLeft: 8 }}>
+              <span className="signal-badge premium_b">▲极品B</span>
+              <span className="signal-badge premium_b2">⬡极品B2</span>
+              <span className="signal-badge premium_a">■极品A</span>
+              <span className="signal-badge original">●原版</span>
+              <span className="signal-badge ultra_shrink">▼超缩量</span>
+            </div>
           </div>
           {/* 第二行：MA均线跟随光标 */}
           <div style={{ display: 'flex', gap: 10, fontSize: 11, color: 'var(--text-secondary)', padding: '2px 12px 4px', whiteSpace: 'nowrap' }}>
@@ -534,6 +545,7 @@ export default function App() {
                 onCrosshairMove={handleCrosshairMove}
                 onChartClick={handleChartClick}
                 benchmarkTime={benchmarkIdx !== null ? kline.kline[benchmarkIdx]?.time : null}
+                focusDate={focusDate}
               />
             ) : (
               <div style={{
@@ -638,7 +650,7 @@ export default function App() {
                     <div className="pc-tags" style={{ flexShrink: 0 }}>
                       {p.strategy_id?.split(',').map((st: string) => (
                         <span key={st} className={`pick-tag ${st.trim()}`}>
-                          {st.trim() === 'premium_b' ? 'B' : st.trim() === 'premium_a' ? 'A' : st.trim() === 'ultra_shrink' ? '缩' : '原'}
+                          {st.trim() === 'premium_b' ? 'B' : st.trim() === 'premium_b2' ? 'B2' : st.trim() === 'premium_a' ? 'A' : st.trim() === 'ultra_shrink' ? '缩' : '原'}
                         </span>
                       ))}
                       <span className="pick-tag">{p.dist_ma20?.toFixed(1)}%</span>
