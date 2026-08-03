@@ -56,6 +56,28 @@ export interface WatchlistItem {
   added_at: string
 }
 
+export interface LaogaoPick {
+  date: string
+  symbol: string
+  name: string
+  status: string
+  score: number
+  stage: string
+  drop_pct: number
+  bottom_days: number
+  vol_shrink: number
+  streak: number
+  close_qfq: number
+  ma20: number
+  ma60: number
+}
+
+export interface LaogaoDateSummary {
+  date: string
+  total: number
+  worth_cnt: number
+}
+
 export async function searchStocks(q: string): Promise<StockInfo[]> {
   const res = await fetch(`${API_BASE}/search?q=${encodeURIComponent(q)}`)
   return res.json()
@@ -84,6 +106,18 @@ export async function getPickDates(strategy?: string): Promise<PickDateSummary[]
   if (strategy) params.set('strategy', strategy)
   const qs = params.toString()
   const res = await fetch(`${API_BASE}/picks/dates${qs ? '?' + qs : ''}`)
+  return res.json()
+}
+
+export async function getLaogaoPicks(date?: string): Promise<LaogaoPick[]> {
+  const params = new URLSearchParams()
+  if (date) params.set('date', date)
+  const res = await fetch(`${API_BASE}/bottom-confirm/picks?${params}`)
+  return res.json()
+}
+
+export async function getLaogaoDates(): Promise<LaogaoDateSummary[]> {
+  const res = await fetch(`${API_BASE}/bottom-confirm/dates`)
   return res.json()
 }
 

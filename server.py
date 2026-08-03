@@ -114,9 +114,18 @@ def _get_stock_signals(symbol):
         "SELECT date, strategy_id, name FROM daily_picks WHERE symbol = ? ORDER BY date DESC LIMIT 50",
         (symbol,)
     ).fetchall()
+    # 底部确认策略信号(买入+观察)
+    bc_rows = cur.execute(
+        "SELECT date, name, status FROM bottom_confirm_picks "
+        "WHERE symbol = ? AND status IN ('worth', 'watch') ORDER BY date DESC LIMIT 50",
+        (symbol,)
+    ).fetchall()
     conn.close()
     for r in rows:
         signals.append({"date": r["date"], "type": r["strategy_id"], "name": r["name"]})
+    for r in bc_rows:
+        t = "bottom_confirm" if r["status"] == "worth" else "bottom_confirm_watch"
+        signals.append({"date": r["date"], "type": t, "name": r["name"]})
     return signals
 
 
@@ -160,10 +169,19 @@ def get_picks():
     conn.close()
     
     result = []
+    # 用实时名称替换 daily_picks 中可能过时的名字
+    conn_seq = db_conn(SEQUOIA_DB)
     for r in rows:
         d = dict(r)
+        real_name = conn_seq.execute(
+            "SELECT name FROM stock_basics WHERE symbol=? ORDER BY date DESC LIMIT 1",
+            (d["symbol"],)
+        ).fetchone()
+        if real_name and real_name["name"]:
+            d["name"] = real_name["name"]
         d["strategy_id"] = d.pop("strategies")
         result.append(d)
+    conn_seq.close()
     return jsonify(result)
 
 
@@ -258,7 +276,48 @@ def reorder_watchlist():
     return jsonify({"status": "ok"})
 
 
+# ── 缠论信号(静态路由必须先于 /api/chanlun/<symbol>, 否则被当作symbol) ──
+@app.route("/api/chanlun/dates")
+def api_chanlun_dates():
+    """缠论信号日期列表"""
+    conn = db_conn(TREND_DB)
+    try:
+        rows = conn.execute(
+            "SELECT signal_date, COUNT(*) FROM chanlun_signals GROUP BY signal_date "
+            "ORDER BY signal_date DESC LIMIT 60").fetchall()
+    except Exception:
+        return json.dumps([])
+    return json.dumps([{"date": r[0], "total": r[1]} for r in rows], ensure_ascii=False)
+
+
+@app.route("/api/chanlun/signals")
+def api_chanlun_signals():
+    """缠论信号列表: ?date=2026-07-30&type=三买"""
+    date = request.args.get("date", "")
+    typ = request.args.get("type", "")
+    conn = db_conn(TREND_DB)
+    try:
+        q = "SELECT symbol, name, signal_type, signal_date, price, ref_zd, ref_zg FROM chanlun_signals WHERE signal_date=?"
+        args = [date]
+        if typ:
+            q += " AND signal_type=?"
+            args.append(typ)
+        q += " ORDER BY signal_type, symbol"
+        rows = conn.execute(q, args).fetchall()
+    except Exception:
+        return json.dumps([])
+    return json.dumps([{"symbol": r[0], "name": r[1], "type": r[2], "date": r[3],
+                        "price": r[4], "zd": r[5], "zg": r[6]} for r in rows], ensure_ascii=False)
+
+
 # ── Stock basic info ──────────────────────────────────────────
+@app.route("/api/chanlun/<symbol>")
+def api_chanlun(symbol):
+    """缠论分析(完整版): 笔/线段/中枢/走势类型/背驰/买卖点"""
+    import chanlun_full
+    return json.dumps(chanlun_full.analyze(symbol), ensure_ascii=False)
+
+
 @app.route("/api/stock/<symbol>")
 def get_stock_info(symbol):
     conn = db_conn(SEQUOIA_DB)
@@ -271,6 +330,47 @@ def get_stock_info(symbol):
     if row:
         return jsonify({"symbol": row["symbol"], "name": row["name"]})
     return jsonify({"symbol": symbol, "name": ""})
+
+
+# ── 底部确认策略 ────────────────────────────────────────────
+@app.route("/api/bottom-confirm/picks")
+def get_bc_picks():
+    date = request.args.get("date")
+    conn = db_conn(TREND_DB)
+    rows = conn.execute(
+        "SELECT date, symbol, name, status, score, stage, drop_pct, bottom_days, "
+        "vol_shrink, streak, close_qfq, ma20, ma60 "
+        "FROM bottom_confirm_picks WHERE (? IS NULL OR date = ?) "
+        "ORDER BY CASE status WHEN 'worth' THEN 0 ELSE 1 END, score DESC",
+        (date, date)
+    ).fetchall()
+    conn.close()
+    # 实时名称
+    conn_seq = db_conn(SEQUOIA_DB)
+    result = []
+    for r in rows:
+        d = dict(r)
+        real_name = conn_seq.execute(
+            "SELECT name FROM stock_basics WHERE symbol=? ORDER BY date DESC LIMIT 1",
+            (d["symbol"],)
+        ).fetchone()
+        if real_name and real_name["name"]:
+            d["name"] = real_name["name"]
+        result.append(d)
+    conn_seq.close()
+    return jsonify(result)
+
+
+@app.route("/api/bottom-confirm/dates")
+def get_bc_dates():
+    conn = db_conn(TREND_DB)
+    rows = conn.execute(
+        "SELECT date, COUNT(*) as total, "
+        "SUM(CASE WHEN status='worth' THEN 1 ELSE 0 END) as worth_cnt "
+        "FROM bottom_confirm_picks GROUP BY date ORDER BY date DESC"
+    ).fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
 
 
 # ── Serve static frontend ────────────────────────────────────

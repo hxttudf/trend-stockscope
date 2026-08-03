@@ -3,7 +3,8 @@ import Chart, { CrosshairInfo } from './components/Chart'
 import {
   KlineData, KlinePoint, Signal, PickRecord, WatchlistItem,
   searchStocks, getKline, getStockInfo, getPicks, getPickDates,
-  getWatchlist, addToWatchlist, removeFromWatchlist, reorderWatchlist
+  getLaogaoPicks, getLaogaoDates,
+  getWatchlist, addToWatchlist, removeFromWatchlist, updateWatchlistNote, reorderWatchlist,
 } from './utils/api'
 
 const RANGES = [
@@ -80,10 +81,19 @@ export default function App() {
   const [picks, setPicks] = useState<PickRecord[]>([])
   const [pickDates, setPickDates] = useState<{ date: string; total: number }[]>([])
   const [selectedPickDate, setSelectedPickDate] = useState('')
-  const [sidebarTab, setSidebarTab] = useState<'watchlist' | 'picks'>('watchlist')
+  const [sidebarTab, setSidebarTab] = useState<'watchlist' | 'picks' | 'laogao' | 'chanlun'>('watchlist')
   const [strategyFilter, setStrategyFilter] = useState('')  // '' = all
+  const [laogaoPicks, setLaogaoPicks] = useState<import('./utils/api').LaogaoPick[]>([])
+  const [laogaoDates, setLaogaoDates] = useState<{ date: string; total: number; worth_cnt: number }[]>([])
+  const [selectedLaogaoDate, setSelectedLaogaoDate] = useState('')
+  const [chanlunDates, setChanlunDates] = useState<{ date: string; total: number }[]>([])
+  const [chanlunSignals, setChanlunSignals] = useState<any[]>([])
+  const [selectedChanlunDate, setSelectedChanlunDate] = useState('')
+  const [chanlunTypeFilter, setChanlunTypeFilter] = useState('')
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null)
   const [measureMode, setMeasureMode] = useState(false)
+  const [chanlunMode, setChanlunMode] = useState(false)
+  const [chanlunData, setChanlunData] = useState<any>(null)
   const [benchmarkIdx, setBenchmarkIdx] = useState<number | null>(null)
   const [focusDate, setFocusDate] = useState<string | null>(null)  // 选股跳转时聚焦的日期
 
@@ -160,6 +170,57 @@ export default function App() {
     return () => { cancelled = true }
   }, [selectedPickDate, strategyFilter])
 
+  // ── 老高多重确认策略 ──
+  useEffect(() => {
+    getLaogaoDates().then(dates => {
+      setLaogaoDates(dates)
+      if (dates.length > 0) {
+        if (!dates.find(d => d.date === selectedLaogaoDate)) {
+          setSelectedLaogaoDate(dates[0].date)
+        }
+      } else {
+        setSelectedLaogaoDate('')
+      }
+    })
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    if (selectedLaogaoDate) {
+      setLaogaoPicks([])
+      getLaogaoPicks(selectedLaogaoDate).then(data => {
+        if (!cancelled) setLaogaoPicks(data)
+      })
+    }
+    return () => { cancelled = true }
+  }, [selectedLaogaoDate])
+
+  // ── 缠论信号 ──
+  useEffect(() => {
+    fetch('/api/chanlun/dates').then(r => r.json()).then((dates: { date: string; total: number }[]) => {
+      setChanlunDates(dates)
+      if (dates.length > 0) {
+        if (!dates.find(d => d.date === selectedChanlunDate)) {
+          setSelectedChanlunDate(dates[0].date)
+        }
+      } else {
+        setSelectedChanlunDate('')
+      }
+    })
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    if (selectedChanlunDate) {
+      setChanlunSignals([])
+      const q = `/api/chanlun/signals?date=${selectedChanlunDate}${chanlunTypeFilter ? `&type=${encodeURIComponent(chanlunTypeFilter)}` : ''}`
+      fetch(q).then(r => r.json()).then(data => {
+        if (!cancelled) setChanlunSignals(data)
+      })
+    }
+    return () => { cancelled = true }
+  }, [selectedChanlunDate, chanlunTypeFilter])
+
   // Load K-line for current stock
   const loadStock = useCallback(async (symbol: string, name: string, signalDate?: string) => {
     setCurrentStock({ symbol, name })
@@ -194,6 +255,18 @@ export default function App() {
       })
     }
   }, [qfq])
+
+  // Load chanlun data when mode enabled or stock changes
+  useEffect(() => {
+    if (chanlunMode && currentStock) {
+      fetch(`/api/chanlun/${currentStock.symbol}`)
+        .then(r => r.json())
+        .then(d => setChanlunData(d))
+        .catch(() => setChanlunData(null))
+    } else {
+      setChanlunData(null)
+    }
+  }, [chanlunMode, currentStock, qfq])
 
   // Update info bar when kline data loads
   useEffect(() => {
@@ -462,6 +535,11 @@ export default function App() {
             style={{ fontSize: 11, padding: '2px 6px' }}>
             M
           </button>
+          <button className={`toolbar-btn ${chanlunMode ? 'active' : ''}`}
+            onClick={() => setChanlunMode(m => !m)}
+            style={{ fontSize: 11, padding: '2px 6px' }}>
+            缠
+          </button>
 
           <div className="range-group">
             {RANGES.map(r => (
@@ -513,6 +591,7 @@ export default function App() {
               <span className="signal-badge premium_a">■极品A</span>
               <span className="signal-badge original">●原版</span>
               <span className="signal-badge ultra_shrink">▼超缩量</span>
+              <span className="signal-badge bottom_confirm">▲底部确认</span>
             </div>
           </div>
           {/* 第二行：MA均线跟随光标 */}
@@ -546,6 +625,7 @@ export default function App() {
                 onChartClick={handleChartClick}
                 benchmarkTime={benchmarkIdx !== null ? kline.kline[benchmarkIdx]?.time : null}
                 focusDate={focusDate}
+                chanlun={chanlunMode ? chanlunData : null}
               />
             ) : (
               <div style={{
@@ -575,6 +655,14 @@ export default function App() {
           <button className={`wl-tab ${sidebarTab === 'picks' ? 'active' : ''}`}
             onClick={() => setSidebarTab('picks')}>
               📋 选股 <span className="wl-count">{pickDates.length}天</span>
+            </button>
+          <button className={`wl-tab ${sidebarTab === 'laogao' ? 'active' : ''}`}
+            onClick={() => setSidebarTab('laogao')}>
+              🎯 底部确认 <span className="wl-count">{laogaoDates.length}天</span>
+            </button>
+          <button className={`wl-tab ${sidebarTab === 'chanlun' ? 'active' : ''}`}
+            onClick={() => setSidebarTab('chanlun')}>
+              📐 缠论 <span className="wl-count">{chanlunDates.length}天</span>
             </button>
           </div>
 
@@ -607,7 +695,7 @@ export default function App() {
                 ))
               )}
             </div>
-          ) : (
+          ) : sidebarTab === 'picks' ? (
             <div className="watchlist-items">
               {/* Strategy filter tabs — 先策略 */}
               <div className="picks-strategy-bar" style={{ display: 'flex', gap: 4, padding: '4px 8px', borderBottom: '1px solid var(--border)' }}>
@@ -654,6 +742,118 @@ export default function App() {
                         </span>
                       ))}
                       <span className="pick-tag">{p.dist_ma20?.toFixed(1)}%</span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          ) : sidebarTab === 'chanlun' ? (
+            <div className="watchlist-items">
+              {/* 类型过滤 */}
+              <div className="picks-strategy-bar" style={{ display: 'flex', gap: 4, padding: '4px 8px', borderBottom: '1px solid var(--border)' }}>
+                {['', '一买', '二买', '三买', '一卖', '二卖', '三卖'].map(t => (
+                  <button key={t || 'all'}
+                    className={`range-btn ${chanlunTypeFilter === t ? 'active' : ''}`}
+                    onClick={() => setChanlunTypeFilter(t)}
+                    style={{ fontSize: 11, padding: '2px 6px' }}>
+                    {t || '全部'}
+                  </button>
+                ))}
+              </div>
+              {/* 日期选择 */}
+              {chanlunDates.length > 0 && (
+                <div className="picks-date-bar" style={{ maxHeight: 120, overflowY: 'auto', borderBottom: '1px solid var(--border)' }}>
+                  {chanlunDates.map(d => (
+                    <button key={d.date}
+                      className={`range-btn ${d.date === selectedChanlunDate ? 'active' : ''}`}
+                      onClick={() => setSelectedChanlunDate(d.date)}>
+                      {d.date.slice(5)} <span className="wl-count">{d.total}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div style={{ padding: '6px 10px', fontSize: 11, color: '#888', borderBottom: '1px solid var(--border)' }}>
+                缠论: 红1买/橙2买/黄3买↑ 绿1卖/灰2卖/蓝3卖↓
+              </div>
+              {chanlunSignals.length === 0 ? (
+                <div className="watchlist-empty">
+                  {selectedChanlunDate
+                    ? `${selectedChanlunDate} 无缠论信号`
+                    : '暂无缠论信号\n历史扫描完成后更新'}
+                </div>
+              ) : (
+                // 合并同股同日的重合信号(如 二买+三买 同一天)
+                (() => {
+                  const mergedList: any[] = []
+                  const byKey: Record<string, any> = {}
+                  chanlunSignals.forEach((s: any) => {
+                    const key = `${s.symbol}_${s.date}`
+                    if (byKey[key]) {
+                      if (!byKey[key].type.includes(s.type)) byKey[key].type += '+' + s.type
+                      byKey[key].zd = byKey[key].zd || s.zd
+                      byKey[key].zg = byKey[key].zg || s.zg
+                    } else {
+                      byKey[key] = { ...s }
+                      mergedList.push(byKey[key])
+                    }
+                  })
+                  return mergedList.map(s => (
+                    <div key={s.symbol + s.date + s.type}
+                      className={`watchlist-item ${currentStock?.symbol === s.symbol ? 'active' : ''}`}
+                      onClick={() => loadStock(s.symbol, s.name)}>
+                      <div style={{ flex: 1 }}>
+                        <span className="wl-sym">{s.symbol}</span>
+                        <span className="wl-name">{s.name}</span>
+                      </div>
+                      <div className="pc-tags" style={{ flexShrink: 0 }}>
+                        <span className="pick-tag" style={{ color: s.type.includes('买') ? '#f0883e' : '#58a6ff' }}>{s.type}</span>
+                        <span className="pick-tag">{s.price?.toFixed(2)}</span>
+                        {s.zd > 0 && <span className="pick-tag">{s.zd.toFixed(1)}~{s.zg.toFixed(1)}</span>}
+                      </div>
+                    </div>
+                  ))
+                })()
+              )}
+            </div>
+          ) : (
+            <div className="watchlist-items">
+              {/* Date selector */}
+              {laogaoDates.length > 0 && (
+                <div className="picks-date-bar" style={{ maxHeight: 120, overflowY: 'auto', borderBottom: '1px solid var(--border)' }}>
+                  {laogaoDates.map(d => (
+                    <button key={d.date}
+                      className={`range-btn ${d.date === selectedLaogaoDate ? 'active' : ''}`}
+                      onClick={() => setSelectedLaogaoDate(d.date)}>
+                      {d.date.slice(5)} <span className="wl-count">买{d.worth_cnt}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div style={{ padding: '6px 10px', fontSize: 11, color: '#888', borderBottom: '1px solid var(--border)' }}>
+                底部连续确认≥4期买入 / 确认≥3期观察
+              </div>
+              {laogaoPicks.length === 0 ? (
+                <div className="watchlist-empty">
+                  {selectedLaogaoDate
+                    ? `${selectedLaogaoDate} 无底部确认信号`
+                    : '暂无底部确认信号\n每日15:22自动更新'}
+                </div>
+              ) : (
+                laogaoPicks.map(p => (
+                  <div key={p.symbol + p.status}
+                    className={`watchlist-item ${currentStock?.symbol === p.symbol ? 'active' : ''}`}
+                    onClick={() => loadStock(p.symbol, p.name, p.date)}>
+                    <div style={{ flex: 1 }}>
+                      <span className="wl-sym">{p.symbol}</span>
+                      <span className="wl-name">{p.name}</span>
+                    </div>
+                    <div className="pc-tags" style={{ flexShrink: 0 }}>
+                      <span className={`pick-tag ${p.status === 'worth' ? 'premium_b' : 'ultra_shrink'}`}>
+                        {p.status === 'worth' ? '买' : '观'}
+                      </span>
+                      <span className="pick-tag">{p.streak}期</span>
+                      <span className="pick-tag">{p.score.toFixed(0)}分</span>
+                      <span className="pick-tag">{p.stage.slice(0, 1)}</span>
                     </div>
                   </div>
                 ))

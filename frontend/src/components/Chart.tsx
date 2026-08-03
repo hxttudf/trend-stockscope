@@ -12,6 +12,18 @@ export interface CrosshairInfo {
   prevClose: number   // 前一根K线收盘价，用于计算涨跌幅
 }
 
+interface ChanlunData {
+  bi: { time: string; type: string; price: number }[]
+  segs: { time: string; type: string; price: number }[]
+  last_zhongshu: { zd: number; zg: number; ext: number } | null
+  trend: string
+  buy_sell: { time: string; type: string; price: number }[]
+  chain: { time: string; type: string; price: number }[]
+  sell_chain: { time: string; type: string; price: number }[]
+  cur_price: number
+  cur_date: string
+}
+
 interface ChartProps {
   kline: KlinePoint[]
   signals: Signal[]
@@ -21,8 +33,8 @@ interface ChartProps {
   onChartClick?: (time: string) => void
   benchmarkTime?: string | null
   focusDate?: string | null
+  chanlun?: ChanlunData | null
 }
-
 const COLORS = {
   bg: '#0d1117',
   grid: '#1c2128',
@@ -46,9 +58,14 @@ const KLINE_CACHE = { data: [] as KlinePoint[] }
 
 export default memo(Chart)
 
-function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, benchmarkTime, focusDate }: ChartProps) {
+function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, benchmarkTime, focusDate, chanlun }: ChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const macdContainerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
+  const macdChartRef = useRef<IChartApi | null>(null)
+  const macdHistRef = useRef<ISeriesApi<'Histogram'> | null>(null)
+  const macdDifRef = useRef<ISeriesApi<'Line'> | null>(null)
+  const macdDeaRef = useRef<ISeriesApi<'Line'> | null>(null)
   const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null)
   const volumeSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null)
   const ma5Ref = useRef<ISeriesApi<'Line'> | null>(null)
@@ -56,6 +73,9 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, b
   const ma20Ref = useRef<ISeriesApi<'Line'> | null>(null)
   const ma60Ref = useRef<ISeriesApi<'Line'> | null>(null)
   const signalScatterRef = useRef<ISeriesApi<'Line'> | null>(null)
+  const extraSeriesRef = useRef<ISeriesApi<'Line'>[]>([])
+  const chanSeriesRef = useRef<ISeriesApi<'Line'>[]>([])
+  const chanPriceLinesRef = useRef<ReturnType<ISeriesApi<'Candlestick'>['createPriceLine']>[]>([])
   // 用ref存最新onCrosshairMove，避免闭包捕获旧值
   const onCrosshairMoveRef = useRef(onCrosshairMove)
   onCrosshairMoveRef.current = onCrosshairMove
@@ -151,13 +171,14 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, b
       priceScaleId: 'volume',
     })
     chart.priceScale('volume').applyOptions({
-      scaleMargins: { top: 0.8, bottom: 0 },
+      scaleMargins: { top: 0.87, bottom: 0 },
     })
 
     const makeMA = (color: string, width: 1 | 2 | 3 | 4) => chart.addLineSeries({
       color,
       lineWidth: width,
       lastValueVisible: false,
+      priceLineVisible: false,  // 隐藏右侧横贯虚线, 画面清爽
       priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
     })
 
@@ -203,10 +224,62 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, b
     })
     observer.observe(containerRef.current)
 
+    // ═══ MACD 副图 (独立 chart, 主图时间轴单向同步) ═══
+    let macdChart: IChartApi | null = null
+    if (macdContainerRef.current) {
+      macdChart = createChart(macdContainerRef.current, {
+        layout: { background: { color: COLORS.bg }, textColor: COLORS.text, fontSize: 11 },
+        grid: { vertLines: { color: COLORS.grid }, horzLines: { color: COLORS.grid } },
+        rightPriceScale: { borderColor: COLORS.grid, scaleMargins: { top: 0.25, bottom: 0.25 } },
+        timeScale: {
+          borderColor: COLORS.grid,
+          visible: false, // 副图不显示时间轴(共用主图)
+          tickMarkFormatter: (time: Time) => {
+            const d = typeof time === 'string' ? time : String(time)
+            return d.slice(5)
+          },
+        },
+        handleScroll: false,
+        handleScale: false,
+        crosshair: { mode: 0 },
+        localization: { priceFormatter: (p: number) => p.toFixed(2) },
+      })
+      macdChartRef.current = macdChart
+      macdHistRef.current = macdChart.addHistogramSeries({
+        priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
+        priceLineVisible: false,
+        lastValueVisible: false,
+      })
+      macdDifRef.current = macdChart.addLineSeries({
+        color: '#f0d43a', lineWidth: 1, lastValueVisible: false, priceLineVisible: false,
+      })
+      macdDeaRef.current = macdChart.addLineSeries({
+        color: '#7ee787', lineWidth: 1, lastValueVisible: false, priceLineVisible: false,
+      })
+      const macdObserver = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          const { width, height } = entry.contentRect
+          macdChart?.applyOptions({ width, height })
+        }
+      })
+      macdObserver.observe(macdContainerRef.current)
+      // 主图滚动/缩放 → 同步副图
+      const syncToMacd = () => {
+        const r = chart.timeScale().getVisibleLogicalRange()
+        if (r) macdChart?.timeScale().setVisibleLogicalRange(r)
+      }
+      chart.timeScale().subscribeVisibleLogicalRangeChange(syncToMacd)
+      // 副图初始跟随
+      const r0 = chart.timeScale().getVisibleLogicalRange()
+      if (r0) macdChart.timeScale().setVisibleLogicalRange(r0)
+    }
+
     return () => {
       el?.removeEventListener('click', handleContainerClick)
       observer.disconnect()
       chart.remove()
+      macdChart?.remove()
+      macdChartRef.current = null
     }
   }, [handleCrosshair])
 
@@ -249,13 +322,48 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, b
     ma20Ref.current?.setData(calcMA(20))
     ma60Ref.current?.setData(calcMA(60))
 
+    // MACD (12, 26, 9)
+    const emaArr = (data: number[], period: number): number[] => {
+      const k = 2 / (period + 1)
+      const out: number[] = []
+      let prev = data[0] ?? 0
+      for (let i = 0; i < data.length; i++) {
+        prev = i === 0 ? (data[0] ?? 0) : (data[i] ?? 0) * k + prev * (1 - k)
+        out.push(prev)
+      }
+      return out
+    }
+    const ema12 = emaArr(closes, 12)
+    const ema26 = emaArr(closes, 26)
+    const dif = closes.map((_, i) => ema12[i] - ema26[i])
+    const dea = emaArr(dif, 9)
+    const hist = dif.map((d, i) => (d - dea[i]) * 2)
+    // MACD数据与主图严格同索引(从i=0开始全量), 保证时间轴同步不错位
+    // EMA前25个点未收敛(视觉无影响, 用户看近期), 换取与主图一一对应
+    const macdHistData: HistogramData[] = []
+    const macdDifData: LineData[] = []
+    const macdDeaData: LineData[] = []
+    for (let i = 0; i < kline.length; i++) {
+      const t = kline[i].time as Time
+      const hv = hist[i]
+      if (!isFinite(hv)) continue
+      macdHistData.push({ time: t, value: hv, color: hv >= 0 ? 'rgba(240,101,101,0.7)' : 'rgba(80,180,120,0.7)' })
+      macdDifData.push({ time: t, value: dif[i] })
+      macdDeaData.push({ time: t, value: dea[i] })
+    }
+    macdHistRef.current?.setData(macdHistData)
+    macdDifRef.current?.setData(macdDifData)
+    macdDeaRef.current?.setData(macdDeaData)
+
     // Build signal markers
-    const signalConfig: Record<string, { color: string; shape: 'arrowUp' | 'arrowDown' | 'square'; position: 'aboveBar' | 'belowBar'; label: string }> = {
+    const signalConfig: Record<string, { color: string; shape: 'arrowUp' | 'arrowDown' | 'square' | 'circle'; position: 'aboveBar' | 'belowBar'; label: string }> = {
       premium_b:    { color: '#58a6ff',  shape: 'square',   position: 'aboveBar', label: 'B' },
       premium_b2:   { color: '#f0883e',  shape: 'square',   position: 'aboveBar', label: 'B2' },
       premium_a:    { color: '#d29922',  shape: 'arrowUp',  position: 'aboveBar', label: 'A' },
       original:     { color: '#bc8cff',  shape: 'square',   position: 'belowBar', label: 'O' },
       ultra_shrink: { color: '#f7823b',  shape: 'arrowDown', position: 'aboveBar', label: '缩' },
+      bottom_confirm: { color: '#2ea043', shape: 'arrowUp', position: 'belowBar', label: '底' },
+      bottom_confirm_watch: { color: '#8b949e', shape: 'circle', position: 'aboveBar', label: '观' },
     }
     const defaultCfg = { color: '#58a6ff', shape: 'square' as const, position: 'aboveBar' as const, label: '' }
 
@@ -286,26 +394,153 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, b
       const vr = Math.min(range, candleData.length)
       chartRef.current?.timeScale().setVisibleRange({ from: candleData[candleData.length - vr].time, to: candleData[candleData.length - 1].time })
     }
+    // 同步MACD副图时间轴
+    const syncRange = chartRef.current?.timeScale().getVisibleLogicalRange()
+    if (syncRange) macdChartRef.current?.timeScale().setVisibleLogicalRange(syncRange)
 
     // Step 2: 设标记 — lightweight-charts v4.2.3 每系列最多渲染 10 个 marker，所以分批
-    // 每批不超过 10 个（留 1 个给 benchmark），多批用不同 series 添加
-    if (markers.length) candleSeriesRef.current.setMarkers(markers.slice(0, 10))
-    if (markers.length > 10) {
-      const extra = markers.slice(10)
-      const sigSeries = chartRef.current?.addLineSeries({
-        color: 'transparent', lineWidth: 1, lastValueVisible: false, priceLineVisible: false,
-        priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
-      })
-      // LineSeries 需要有数据点，marker 才会渲染
-      const sigData: { time: Time; value: number }[] = []
-      for (const m of extra) {
-        const idx = kline.findIndex(k => k.time === String(m.time))
-        sigData.push({ time: m.time, value: idx >= 0 ? kline[idx].close : 0 })
+    // 每批不超过 10 个，多批用多个额外 series 添加（任意数量信号都能显示）
+    // 先清理上次的额外 series
+    extraSeriesRef.current.forEach(s => {
+      try { chartRef.current?.removeSeries(s) } catch { /* already removed */ }
+    })
+    extraSeriesRef.current = []
+    if (markers.length) {
+      candleSeriesRef.current.setMarkers(markers.slice(0, 10))
+      const rest = markers.slice(10)
+      for (let i = 0; i < rest.length; i += 10) {
+        const batch = rest.slice(i, i + 10)
+        const sigSeries = chartRef.current?.addLineSeries({
+          color: 'transparent', lineWidth: 1, lastValueVisible: false, priceLineVisible: false,
+          priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
+        })
+        if (!sigSeries) continue
+        extraSeriesRef.current.push(sigSeries)
+        // LineSeries 需要有数据点，marker 才会渲染
+        const sigData: { time: Time; value: number }[] = []
+        for (const m of batch) {
+          const idx = kline.findIndex(k => k.time === String(m.time))
+          sigData.push({ time: m.time, value: idx >= 0 ? kline[idx].close : 0 })
+        }
+        sigSeries.setData(sigData)
+        sigSeries.setMarkers(batch)
       }
-      sigSeries?.setData(sigData)
-      sigSeries?.setMarkers(extra)
     }
   }, [kline, signals, symbol, range, focusDate, benchmarkTime])
 
-  return <div ref={containerRef} style={{ width: '100%', height: '100%', touchAction: 'manipulation' }} />
+  return (
+    <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <div ref={containerRef} style={{ width: '100%', flex: 1, minHeight: 0, touchAction: 'manipulation' }} />
+      <div ref={macdContainerRef} style={{ width: '100%', height: 120, flexShrink: 0, borderTop: '1px solid var(--border, #30363d)' }} />
+      <ChanlunOverlay chanlun={chanlun ?? null} kline={kline} chartRef={chartRef} candleSeriesRef={candleSeriesRef} />
+    </div>
+  )
+}
+
+// ═══ 缠论绘制(完整版): 线段折线 + 笔 + 中枢线 + 买卖点标记 ═══
+function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef }: {
+  chanlun: ChanlunData | null
+  kline: KlinePoint[]
+  chartRef: React.RefObject<IChartApi | null>
+  candleSeriesRef: React.RefObject<ISeriesApi<'Candlestick'> | null>
+}) {
+  const seriesRef = useRef<ISeriesApi<'Line'>[]>([])
+  const priceLinesRef = useRef<ReturnType<ISeriesApi<'Candlestick'>['createPriceLine']>[]>([])
+
+  useEffect(() => {
+    // 清理旧的
+    seriesRef.current.forEach(s => { try { chartRef.current?.removeSeries(s) } catch { /* noop */ } })
+    seriesRef.current = []
+    priceLinesRef.current.forEach(pl => { try { candleSeriesRef.current?.removePriceLine(pl) } catch { /* noop */ } })
+    priceLinesRef.current = []
+    const chart = chartRef.current
+    const candle = candleSeriesRef.current
+    if (!chanlun || !chart || !candle) return
+
+    // 防御: 只保留主图K线范围内的时间戳(防止时间错位渲染异常/黑块)
+    const validTimes = new Set(kline.map(k => k.time))
+
+    // 线段折线 (完整版主图: 亮黄粗线)
+    if (chanlun.segs?.length) {
+      const segData: LineData[] = chanlun.segs
+        .filter(s => validTimes.has(s.time))
+        .map(s => ({ time: s.time as Time, value: s.price }))
+      if (segData.length >= 2) {
+        const s = chart.addLineSeries({
+          color: '#f0d43a', lineWidth: 2, lastValueVisible: false, priceLineVisible: false,
+        })
+        s.setData(segData)
+        seriesRef.current.push(s)
+      }
+    }
+
+    // 笔折线 (细灰线, 辅助)
+    if (chanlun.bi?.length) {
+      const biData: LineData[] = chanlun.bi
+        .filter(b => validTimes.has(b.time))
+        .map(b => ({ time: b.time as Time, value: b.price }))
+      if (biData.length >= 2) {
+        const s = chart.addLineSeries({
+          color: 'rgba(160,160,170,0.55)', lineWidth: 1, lastValueVisible: false, priceLineVisible: false,
+        })
+        s.setData(biData)
+        seriesRef.current.push(s)
+      }
+    }
+
+    // 中枢上下沿 (水平虚线)
+    if (chanlun.last_zhongshu) {
+      const { zd, zg } = chanlun.last_zhongshu
+      if (zg > zd) {
+        const pl1 = candle.createPriceLine({
+          price: zg, color: 'rgba(240,101,101,0.7)',
+          lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: `中枢上(${chanlun.last_zhongshu.ext}段)`,
+        })
+        const pl2 = candle.createPriceLine({
+          price: zd, color: 'rgba(80,180,120,0.7)',
+          lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: '中枢下',
+        })
+        priceLinesRef.current = [pl1, pl2]
+      }
+    }
+
+    // 买卖点标记: 完整演化链(chain) + 窗口内最新节点(buy_sell), 去重后全画
+    if (chanlun.chain?.length || chanlun.buy_sell?.length) {
+      const cfg: Record<string, { color: string; label: string }> = {
+        '一买': { color: '#ff4444', label: '1买' }, '二买': { color: '#f0883e', label: '2买' }, '三买': { color: '#d29922', label: '3买' },
+        '一卖': { color: '#2ea043', label: '1卖' }, '二卖': { color: '#8b949e', label: '2卖' }, '三卖': { color: '#58a6ff', label: '3卖' },
+      }
+      const markers: any[] = []
+      const seen = new Set<string>()
+      // 买点链画在K线下方(belowBar), 卖点链画在K线上方(aboveBar)
+      const allSignals: { time: string; type: string; price: number; pos: 'belowBar' | 'aboveBar' }[] = [
+        ...(chanlun.chain || []).map(s => ({ ...s, pos: 'belowBar' as const })),
+        ...(chanlun.buy_sell || []).map(s => ({ ...s, pos: 'belowBar' as const })),
+        ...(chanlun.sell_chain || []).map(s => ({ ...s, pos: 'aboveBar' as const })),
+      ]
+      allSignals.forEach(bs => {
+        const key = `${bs.time}_${bs.type}`
+        if (seen.has(key)) return
+        seen.add(key)
+        const idx = kline.findIndex(k => k.time === bs.time)
+        if (idx < 0) return
+        const c = cfg[bs.type] || { color: '#888', label: bs.type }
+        markers.push({
+          time: bs.time as Time, position: bs.pos, color: c.color,
+          shape: bs.pos === 'aboveBar' ? 'arrowDown' : 'arrowUp', text: c.label,
+        })
+      })
+      if (markers.length) {
+        // 挂到笔折线series上(第2个, 包含所有笔端点; 买卖点必是笔端点)
+        const biSeries = seriesRef.current[1]
+        if (biSeries) {
+          try {
+            biSeries.setMarkers(markers.slice(0, 10))
+          } catch { /* noop */ }
+        }
+      }
+    }
+  }, [chanlun, kline, chartRef, candleSeriesRef])
+
+  return null
 }

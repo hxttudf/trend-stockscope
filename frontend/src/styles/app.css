@@ -547,6 +547,11 @@ body {
   color: #ff9ff3;
 }
 
+.signal-badge.bottom_confirm {
+  background: rgba(46,160,67,0.15);
+  color: #2ea043;
+}
+
 /* ── Picks Date Bar (sidebar) ───────────────────────────── */
 .picks-date-bar {
   display: flex;
