@@ -197,7 +197,8 @@ export default function App() {
 
   // ── 缠论信号 ──
   useEffect(() => {
-    fetch('/api/chanlun/dates').then(r => r.json()).then((dates: { date: string; total: number }[]) => {
+    const q = chanlunTypeFilter ? `/api/chanlun/dates?type=${encodeURIComponent(chanlunTypeFilter)}` : '/api/chanlun/dates'
+    fetch(q).then(r => r.json()).then((dates: { date: string; total: number }[]) => {
       setChanlunDates(dates)
       if (dates.length > 0) {
         if (!dates.find(d => d.date === selectedChanlunDate)) {
@@ -207,7 +208,7 @@ export default function App() {
         setSelectedChanlunDate('')
       }
     })
-  }, [])
+  }, [chanlunTypeFilter])
 
   useEffect(() => {
     let cancelled = false
@@ -751,12 +752,12 @@ export default function App() {
             <div className="watchlist-items">
               {/* 类型过滤 */}
               <div className="picks-strategy-bar" style={{ display: 'flex', gap: 4, padding: '4px 8px', borderBottom: '1px solid var(--border)' }}>
-                {['', '一买', '二买', '三买', '一卖', '二卖', '三卖'].map(t => (
+                {['', '一买', '二买', '三买', '二三买', '一卖', '二卖', '三卖'].map(t => (
                   <button key={t || 'all'}
                     className={`range-btn ${chanlunTypeFilter === t ? 'active' : ''}`}
                     onClick={() => setChanlunTypeFilter(t)}
                     style={{ fontSize: 11, padding: '2px 6px' }}>
-                    {t || '全部'}
+                    {t === '二三买' ? '二买+三买' : (t || '全部')}
                   </button>
                 ))}
               </div>

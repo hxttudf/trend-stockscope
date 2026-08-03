@@ -279,12 +279,18 @@ def reorder_watchlist():
 # ── 缠论信号(静态路由必须先于 /api/chanlun/<symbol>, 否则被当作symbol) ──
 @app.route("/api/chanlun/dates")
 def api_chanlun_dates():
-    """缠论信号日期列表"""
+    """缠论信号日期列表: ?type=三买 时只统计该类型"""
     conn = db_conn(TREND_DB)
+    typ = request.args.get("type", "")
     try:
-        rows = conn.execute(
-            "SELECT signal_date, COUNT(*) FROM chanlun_signals GROUP BY signal_date "
-            "ORDER BY signal_date DESC LIMIT 60").fetchall()
+        if typ:
+            rows = conn.execute(
+                "SELECT signal_date, COUNT(*) FROM chanlun_signals WHERE signal_type=? "
+                "GROUP BY signal_date ORDER BY signal_date DESC LIMIT 60", (typ,)).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT signal_date, COUNT(*) FROM chanlun_signals GROUP BY signal_date "
+                "ORDER BY signal_date DESC LIMIT 60").fetchall()
     except Exception:
         return json.dumps([])
     return json.dumps([{"date": r[0], "total": r[1]} for r in rows], ensure_ascii=False)
@@ -292,18 +298,26 @@ def api_chanlun_dates():
 
 @app.route("/api/chanlun/signals")
 def api_chanlun_signals():
-    """缠论信号列表: ?date=2026-07-30&type=三买"""
+    """缠论信号列表: ?date=2026-07-30&type=三买 | type=二三买 时返回同股同日二买+三买重合"""
     date = request.args.get("date", "")
     typ = request.args.get("type", "")
     conn = db_conn(TREND_DB)
     try:
-        q = "SELECT symbol, name, signal_type, signal_date, price, ref_zd, ref_zg FROM chanlun_signals WHERE signal_date=?"
-        args = [date]
-        if typ:
-            q += " AND signal_type=?"
-            args.append(typ)
-        q += " ORDER BY signal_type, symbol"
-        rows = conn.execute(q, args).fetchall()
+        if typ == "二三买":
+            rows = conn.execute(
+                "SELECT a.symbol, a.name, '二买+三买', a.signal_date, a.price, a.ref_zd, a.ref_zg "
+                "FROM chanlun_signals a JOIN chanlun_signals b "
+                "ON a.symbol=b.symbol AND a.signal_date=b.signal_date "
+                "WHERE a.signal_date=? AND a.signal_type='二买' AND b.signal_type='三买' "
+                "ORDER BY a.symbol", (date,)).fetchall()
+        else:
+            q = "SELECT symbol, name, signal_type, signal_date, price, ref_zd, ref_zg FROM chanlun_signals WHERE signal_date=?"
+            args = [date]
+            if typ:
+                q += " AND signal_type=?"
+                args.append(typ)
+            q += " ORDER BY signal_type, symbol"
+            rows = conn.execute(q, args).fetchall()
     except Exception:
         return json.dumps([])
     return json.dumps([{"symbol": r[0], "name": r[1], "type": r[2], "date": r[3],
