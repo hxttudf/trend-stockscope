@@ -849,7 +849,7 @@ export default function App() {
                         {s.strength === 'weak' && (
                           <span className="pick-tag" style={{ color: '#f85149', borderColor: '#f85149' }}>🔴弱{s.score?.toFixed(0)}</span>
                         )}
-                        {(s.strength === 'neutral' || !s.strength) && s.score > 60 && (
+                        {(!s.strength || s.strength === 'neutral') && (
                           <span className="pick-tag" style={{ color: '#8b949e', borderColor: '#8b949e' }}>分{s.score?.toFixed(0)}</span>
                         )}
                         <span className="pick-tag" style={{ color: hasErr ? '#ff4444' : (dispType.includes('买') ? '#f0883e' : '#58a6ff') }}>

@@ -631,7 +631,7 @@ def api_chanlun_signals():
               "strength": r[8] if len(r) > 8 else "neutral",
               "score": r[9] if len(r) > 9 else 50} for r in rows]
     order = {"strong": 0, "neutral": 1, "weak": 2}
-    items.sort(key=lambda x: (order.get(x["strength"], 1), x["type"], x["symbol"]))
+    items.sort(key=lambda x: (order.get(x["strength"], 1), -(x.get("score") or 50), x["type"], x["symbol"]))
     return json.dumps(items, ensure_ascii=False)
 
 
