@@ -459,19 +459,22 @@ def api_chanlun_signals():
         elif typ == "d3":
             rows = _d3_list(conn, date)
         elif typ == "二三买":
+            # 返回双行(二买+三买各自带status), 前端合并逻辑自动逐类型标✗
             rows = conn.execute(
-                "SELECT a.symbol, a.name, '二买+三买', a.signal_date, a.price, a.ref_zd, a.ref_zg "
+                "SELECT a.symbol, a.name, a.signal_type, a.signal_date, a.price, a.ref_zd, a.ref_zg, a.status "
                 "FROM chanlun_signals a JOIN chanlun_signals b "
                 "ON a.symbol=b.symbol AND a.signal_date=b.signal_date "
-                "WHERE a.signal_date=? AND a.signal_type='二买' AND b.signal_type='三买' "
-                "ORDER BY a.symbol", (date,)).fetchall()
+                "WHERE a.signal_date=? AND ((a.signal_type='二买' AND b.signal_type='三买') "
+                "OR (a.signal_type='三买' AND b.signal_type='二买')) "
+                "ORDER BY a.symbol, a.signal_type", (date,)).fetchall()
         elif typ == "二三卖":
             rows = conn.execute(
-                "SELECT a.symbol, a.name, '二卖+三卖', a.signal_date, a.price, a.ref_zd, a.ref_zg "
+                "SELECT a.symbol, a.name, a.signal_type, a.signal_date, a.price, a.ref_zd, a.ref_zg, a.status "
                 "FROM chanlun_signals a JOIN chanlun_signals b "
                 "ON a.symbol=b.symbol AND a.signal_date=b.signal_date "
-                "WHERE a.signal_date=? AND a.signal_type='二卖' AND b.signal_type='三卖' "
-                "ORDER BY a.symbol", (date,)).fetchall()
+                "WHERE a.signal_date=? AND ((a.signal_type='二卖' AND b.signal_type='三卖') "
+                "OR (a.signal_type='三卖' AND b.signal_type='二卖')) "
+                "ORDER BY a.symbol, a.signal_type", (date,)).fetchall()
         else:
             q = "SELECT symbol, name, signal_type, signal_date, price, ref_zd, ref_zg, status FROM chanlun_signals WHERE signal_date=?"
             args = [date]
@@ -501,7 +504,7 @@ def api_chanlun(symbol):
         mp.close()
         for t, sd, p in errs:
             d.setdefault("buy_sell", []).append(
-                {"time": sd, "type": "✗推翻", "price": round(p, 2) if p else 0, "status": "error"})
+                {"time": sd, "type": f"✗{t}", "price": round(p, 2) if p else 0, "status": "error"})
     except Exception:
         pass
     return json.dumps(d, ensure_ascii=False)
