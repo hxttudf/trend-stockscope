@@ -414,14 +414,29 @@ def api_chanlun_dates():
     preview = request.args.get("preview", "") == "1"
     try:
         if preview:
-            # 盘中预览: 查 preview_signals 独立表(不混 chanlun_signals)
-            q = "SELECT signal_date, COUNT(*) FROM preview_signals"
-            args = []
-            if typ and typ not in ("二三买", "二三卖", "d3", "w30"):
-                q += " WHERE signal_type=?"
-                args = [typ]
-            q += " GROUP BY signal_date ORDER BY signal_date DESC LIMIT 60"
-            rows = conn.execute(q, args).fetchall()
+            # 盘中预览: 查 preview_signals 独立表(不混 chanlun_signals), 支持D3/W30/二三买
+            if typ == "二三买":
+                rows = conn.execute(
+                    "SELECT a.signal_date, COUNT(DISTINCT a.symbol) FROM preview_signals a "
+                    "JOIN preview_signals b ON a.symbol=b.symbol AND a.signal_date=b.signal_date "
+                    "WHERE a.signal_type='二买' AND b.signal_type='三买' "
+                    "GROUP BY a.signal_date ORDER BY a.signal_date DESC LIMIT 60").fetchall()
+            elif typ == "d3":
+                rows = conn.execute(
+                    "SELECT signal_date, COUNT(*) FROM preview_signals WHERE d3=1 "
+                    "GROUP BY signal_date ORDER BY signal_date DESC LIMIT 60").fetchall()
+            elif typ == "w30":
+                rows = conn.execute(
+                    "SELECT signal_date, COUNT(*) FROM preview_signals WHERE w30=1 "
+                    "GROUP BY signal_date ORDER BY signal_date DESC LIMIT 60").fetchall()
+            elif typ:
+                rows = conn.execute(
+                    "SELECT signal_date, COUNT(*) FROM preview_signals WHERE signal_type=? "
+                    "GROUP BY signal_date ORDER BY signal_date DESC LIMIT 60", (typ,)).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT signal_date, COUNT(*) FROM preview_signals "
+                    "GROUP BY signal_date ORDER BY signal_date DESC LIMIT 60").fetchall()
         elif typ == "二三买":
             rows = conn.execute(
                 "SELECT a.signal_date, COUNT(DISTINCT a.symbol) FROM chanlun_signals a "
@@ -466,14 +481,39 @@ def api_chanlun_signals():
     preview = request.args.get("preview", "") == "1"
     try:
         if preview:
-            # 盘中预览: 查 preview_signals 独立表(不混 chanlun_signals)
-            q = "SELECT symbol, name, signal_type, signal_date, price, ref_zd, ref_zg, status FROM preview_signals WHERE signal_date=?"
-            args = [date]
-            if typ:
-                q += " AND signal_type=?"
-                args.append(typ)
-            q += " ORDER BY signal_type, symbol"
-            rows = conn.execute(q, args).fetchall()
+            # 盘中预览: 查 preview_signals 独立表(不混 chanlun_signals), 支持D3/W30/二三买
+            if typ == "d3":
+                rows = conn.execute(
+                    "SELECT symbol, name, signal_type, signal_date, price, ref_zd, ref_zg, status FROM preview_signals "
+                    "WHERE signal_date=? AND d3=1 ORDER BY symbol", (date,)).fetchall()
+            elif typ == "w30":
+                rows = conn.execute(
+                    "SELECT symbol, name, signal_type, signal_date, price, ref_zd, ref_zg, status FROM preview_signals "
+                    "WHERE signal_date=? AND w30=1 ORDER BY symbol", (date,)).fetchall()
+            elif typ == "二三买":
+                rows = conn.execute(
+                    "SELECT a.symbol, a.name, a.signal_type, a.signal_date, a.price, a.ref_zd, a.ref_zg, a.status "
+                    "FROM preview_signals a JOIN preview_signals b "
+                    "ON a.symbol=b.symbol AND a.signal_date=b.signal_date "
+                    "WHERE a.signal_date=? AND ((a.signal_type='二买' AND b.signal_type='三买') "
+                    "OR (a.signal_type='三买' AND b.signal_type='二买')) "
+                    "ORDER BY a.symbol, a.signal_type", (date,)).fetchall()
+            elif typ == "二三卖":
+                rows = conn.execute(
+                    "SELECT a.symbol, a.name, a.signal_type, a.signal_date, a.price, a.ref_zd, a.ref_zg, a.status "
+                    "FROM preview_signals a JOIN preview_signals b "
+                    "ON a.symbol=b.symbol AND a.signal_date=b.signal_date "
+                    "WHERE a.signal_date=? AND ((a.signal_type='二卖' AND b.signal_type='三卖') "
+                    "OR (a.signal_type='三卖' AND b.signal_type='二卖')) "
+                    "ORDER BY a.symbol, a.signal_type", (date,)).fetchall()
+            else:
+                q = "SELECT symbol, name, signal_type, signal_date, price, ref_zd, ref_zg, status FROM preview_signals WHERE signal_date=?"
+                args = [date]
+                if typ:
+                    q += " AND signal_type=?"
+                    args.append(typ)
+                q += " ORDER BY signal_type, symbol"
+                rows = conn.execute(q, args).fetchall()
         elif typ == "w30":
             rows = _w30_list(conn, date)
         elif typ == "d3":

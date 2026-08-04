@@ -667,6 +667,13 @@ export default function App() {
           <button className={`wl-tab ${sidebarTab === 'chanlun' ? 'active' : ''}`}
             onClick={() => setSidebarTab('chanlun')}>
               📐 缠论 <span className="wl-count">{chanlunDates.length}天</span>
+              <span
+                className={`range-btn ${chanlunPreview ? 'active' : ''}`}
+                onClick={(e) => { e.stopPropagation(); setChanlunPreview(!chanlunPreview) }}
+                title="盘中预览: 用今日未收盘数据提前算信号(未确认); 关闭=正式已确认信号"
+                style={{ fontSize: 10, padding: '0 4px', marginLeft: 4, color: chanlunPreview ? '#a371f7' : undefined, borderColor: chanlunPreview ? '#a371f7' : undefined }}>
+                🕐盘中{chanlunPreview ? 'ON' : ''}
+              </span>
             </button>
           </div>
 
@@ -755,13 +762,7 @@ export default function App() {
             <div className="watchlist-items">
               {/* 类型过滤 */}
               <div className="picks-strategy-bar" style={{ padding: '4px 8px', borderBottom: '1px solid var(--border)' }}>
-                <div style={{ display: 'flex', gap: 4, marginBottom: 4, alignItems: 'center' }}>
-                  <button
-                    className={`range-btn ${chanlunPreview ? 'active' : ''}`}
-                    onClick={() => setChanlunPreview(!chanlunPreview)}
-                    style={{ fontSize: 11, padding: '2px 6px', color: chanlunPreview ? '#a371f7' : undefined, borderColor: chanlunPreview ? '#a371f7' : undefined }}>
-                    🕐 盘中
-                  </button>
+                <div style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
                   {['', '一买', '二买', '三买', '二三买', 'd3', 'w30'].map(t => (
                     <button key={t || 'all'}
                       className={`range-btn ${chanlunTypeFilter === t ? 'active' : ''}`}
