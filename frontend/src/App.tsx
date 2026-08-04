@@ -820,6 +820,9 @@ export default function App() {
                       if (!(s.type in byKey[key].typeStatus)) byKey[key].typeStatus[s.type] = s.status
                       else if (s.status === 'error') byKey[key].typeStatus[s.type] = 'error'
                       if (s.status === 'error') byKey[key].status = 'error'
+                      // 强度取更强
+                      const prio: Record<string, number> = { strong: 0, neutral: 1, weak: 2 }
+                      if ((prio[s.strength] ?? 1) < (prio[byKey[key].strength] ?? 1)) byKey[key].strength = s.strength
                     } else {
                       byKey[key] = { ...s, typeStatus: { [s.type]: s.status } }
                       mergedList.push(byKey[key])
@@ -840,6 +843,12 @@ export default function App() {
                         <span className="wl-name">{s.name}</span>
                       </div>
                       <div className="pc-tags" style={{ flexShrink: 0 }}>
+                        {s.strength === 'strong' && (
+                          <span className="pick-tag" style={{ color: '#3fb950', borderColor: '#3fb950' }}>🟢强</span>
+                        )}
+                        {s.strength === 'weak' && (
+                          <span className="pick-tag" style={{ color: '#f85149', borderColor: '#f85149' }}>🔴弱</span>
+                        )}
                         <span className="pick-tag" style={{ color: hasErr ? '#ff4444' : (dispType.includes('买') ? '#f0883e' : '#58a6ff') }}>
                           {dispType}
                         </span>
