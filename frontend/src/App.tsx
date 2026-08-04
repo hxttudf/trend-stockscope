@@ -795,41 +795,48 @@ export default function App() {
                     : '暂无缠论信号\n历史扫描完成后更新'}
                 </div>
               ) : (
-                // 合并同股同日的重合信号(如 二买+三买 同一天)
+                // 合并同股同日的重合信号(如 二买+三买 同一天), 逐信号保留推翻✗标记
                 (() => {
                   const mergedList: any[] = []
                   const byKey: Record<string, any> = {}
                   chanlunSignals.forEach((s: any) => {
                     const key = `${s.symbol}_${s.date}`
                     if (byKey[key]) {
-                      if (!byKey[key].type.includes(s.type)) byKey[key].type += '+' + s.type
                       byKey[key].zd = byKey[key].zd || s.zd
                       byKey[key].zg = byKey[key].zg || s.zg
-                      // status: 任一信号被推翻(error)则合并后整体标error
+                      // 逐类型status: error优先
+                      if (!(s.type in byKey[key].typeStatus)) byKey[key].typeStatus[s.type] = s.status
+                      else if (s.status === 'error') byKey[key].typeStatus[s.type] = 'error'
                       if (s.status === 'error') byKey[key].status = 'error'
                     } else {
-                      byKey[key] = { ...s }
+                      byKey[key] = { ...s, typeStatus: { [s.type]: s.status } }
                       mergedList.push(byKey[key])
                     }
                   })
-                  return mergedList.map(s => (
-                    <div key={s.symbol + s.date + s.type}
-                      className={`watchlist-item ${currentStock?.symbol === s.symbol ? 'active' : ''} ${s.status === 'error' ? 'sig-error' : ''}`}
+                  return mergedList.map(s => {
+                    // 逐类型拼接: 二买✗+三买 / 二买+三买✗
+                    const dispType = Object.keys(s.typeStatus).map(t =>
+                      t + (s.typeStatus[t] === 'error' ? '✗' : '')).join('+')
+                    const hasErr = s.status === 'error'
+                    return (
+                    <div key={s.symbol + s.date + dispType}
+                      className={`watchlist-item ${currentStock?.symbol === s.symbol ? 'active' : ''} ${hasErr ? 'sig-error' : ''}`}
                       onClick={() => loadStock(s.symbol, s.name, s.date)}
-                      style={s.status === 'error' ? { opacity: 0.55 } : undefined}>
+                      style={hasErr ? { opacity: 0.55 } : undefined}>
                       <div style={{ flex: 1 }}>
                         <span className="wl-sym">{s.symbol}</span>
                         <span className="wl-name">{s.name}</span>
                       </div>
                       <div className="pc-tags" style={{ flexShrink: 0 }}>
-                        <span className="pick-tag" style={{ color: s.status === 'error' ? '#ff4444' : (s.type.includes('买') ? '#f0883e' : '#58a6ff') }}>
-                          {s.type}{s.status === 'error' ? '✗' : ''}
+                        <span className="pick-tag" style={{ color: hasErr ? '#ff4444' : (dispType.includes('买') ? '#f0883e' : '#58a6ff') }}>
+                          {dispType}
                         </span>
                         <span className="pick-tag">{s.price?.toFixed(2)}</span>
                         {s.zd > 0 && <span className="pick-tag">{s.zd.toFixed(1)}~{s.zg.toFixed(1)}</span>}
                       </div>
                     </div>
-                  ))
+                    )
+                  })
                 })()
               )}
             </div>
