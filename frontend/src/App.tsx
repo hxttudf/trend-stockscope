@@ -90,6 +90,7 @@ export default function App() {
   const [chanlunSignals, setChanlunSignals] = useState<any[]>([])
   const [selectedChanlunDate, setSelectedChanlunDate] = useState('')
   const [chanlunTypeFilter, setChanlunTypeFilter] = useState('')
+  const [chanlunPreview, setChanlunPreview] = useState(false)  // 盘中预览模式
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null)
   const [measureMode, setMeasureMode] = useState(false)
   const [chanlunMode, setChanlunMode] = useState(false)
@@ -197,7 +198,8 @@ export default function App() {
 
   // ── 缠论信号 ──
   useEffect(() => {
-    const q = chanlunTypeFilter ? `/api/chanlun/dates?type=${encodeURIComponent(chanlunTypeFilter)}` : '/api/chanlun/dates'
+    const pv = chanlunPreview ? '&preview=1' : ''
+    const q = chanlunTypeFilter ? `/api/chanlun/dates?type=${encodeURIComponent(chanlunTypeFilter)}${pv}` : `/api/chanlun/dates${pv ? '?preview=1' : ''}`
     fetch(q).then(r => r.json()).then((dates: { date: string; total: number }[]) => {
       setChanlunDates(dates)
       if (dates.length > 0) {
@@ -208,13 +210,14 @@ export default function App() {
         setSelectedChanlunDate('')
       }
     })
-  }, [chanlunTypeFilter])
+  }, [chanlunTypeFilter, chanlunPreview])
 
   useEffect(() => {
     let cancelled = false
     if (selectedChanlunDate) {
       setChanlunSignals([])
-      const q = `/api/chanlun/signals?date=${selectedChanlunDate}${chanlunTypeFilter ? `&type=${encodeURIComponent(chanlunTypeFilter)}` : ''}`
+      const pv = chanlunPreview ? '&preview=1' : ''
+      const q = `/api/chanlun/signals?date=${selectedChanlunDate}${chanlunTypeFilter ? `&type=${encodeURIComponent(chanlunTypeFilter)}` : ''}${pv}`
       fetch(q).then(r => r.json()).then(data => {
         if (!cancelled) setChanlunSignals(data)
       })
@@ -752,7 +755,13 @@ export default function App() {
             <div className="watchlist-items">
               {/* 类型过滤 */}
               <div className="picks-strategy-bar" style={{ padding: '4px 8px', borderBottom: '1px solid var(--border)' }}>
-                <div style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
+                <div style={{ display: 'flex', gap: 4, marginBottom: 4, alignItems: 'center' }}>
+                  <button
+                    className={`range-btn ${chanlunPreview ? 'active' : ''}`}
+                    onClick={() => setChanlunPreview(!chanlunPreview)}
+                    style={{ fontSize: 11, padding: '2px 6px', color: chanlunPreview ? '#a371f7' : undefined, borderColor: chanlunPreview ? '#a371f7' : undefined }}>
+                    🕐 盘中
+                  </button>
                   {['', '一买', '二买', '三买', '二三买', 'd3', 'w30'].map(t => (
                     <button key={t || 'all'}
                       className={`range-btn ${chanlunTypeFilter === t ? 'active' : ''}`}
@@ -831,6 +840,9 @@ export default function App() {
                         <span className="pick-tag" style={{ color: hasErr ? '#ff4444' : (dispType.includes('买') ? '#f0883e' : '#58a6ff') }}>
                           {dispType}
                         </span>
+                        {s.status === 'preview' && (
+                          <span className="pick-tag" style={{ color: '#a371f7', borderColor: '#a371f7', fontStyle: 'italic' }}>未确认</span>
+                        )}
                         <span className="pick-tag">{s.price?.toFixed(2)}</span>
                         {s.zd > 0 && <span className="pick-tag">{s.zd.toFixed(1)}~{s.zg.toFixed(1)}</span>}
                       </div>

@@ -411,8 +411,18 @@ def api_chanlun_dates():
     """缠论信号日期列表: ?type=三买 时只统计该类型; type=二三买 统计重合信号"""
     conn = db_conn(TREND_DB)
     typ = request.args.get("type", "")
+    preview = request.args.get("preview", "") == "1"
     try:
-        if typ == "二三买":
+        if preview:
+            # 盘中预览: 查 preview_signals 独立表(不混 chanlun_signals)
+            q = "SELECT signal_date, COUNT(*) FROM preview_signals"
+            args = []
+            if typ and typ not in ("二三买", "二三卖", "d3", "w30"):
+                q += " WHERE signal_type=?"
+                args = [typ]
+            q += " GROUP BY signal_date ORDER BY signal_date DESC LIMIT 60"
+            rows = conn.execute(q, args).fetchall()
+        elif typ == "二三买":
             rows = conn.execute(
                 "SELECT a.signal_date, COUNT(DISTINCT a.symbol) FROM chanlun_signals a "
                 "JOIN chanlun_signals b ON a.symbol=b.symbol AND a.signal_date=b.signal_date "
@@ -453,8 +463,18 @@ def api_chanlun_signals():
     date = request.args.get("date", "")
     typ = request.args.get("type", "")
     conn = db_conn(TREND_DB)
+    preview = request.args.get("preview", "") == "1"
     try:
-        if typ == "w30":
+        if preview:
+            # 盘中预览: 查 preview_signals 独立表(不混 chanlun_signals)
+            q = "SELECT symbol, name, signal_type, signal_date, price, ref_zd, ref_zg, status FROM preview_signals WHERE signal_date=?"
+            args = [date]
+            if typ:
+                q += " AND signal_type=?"
+                args.append(typ)
+            q += " ORDER BY signal_type, symbol"
+            rows = conn.execute(q, args).fetchall()
+        elif typ == "w30":
             rows = _w30_list(conn, date)
         elif typ == "d3":
             rows = _d3_list(conn, date)
