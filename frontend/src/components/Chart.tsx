@@ -509,6 +509,7 @@ function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef }: {
       const cfg: Record<string, { color: string; label: string }> = {
         '一买': { color: '#ff4444', label: '1买' }, '二买': { color: '#f0883e', label: '2买' }, '三买': { color: '#d29922', label: '3买' },
         '一卖': { color: '#2ea043', label: '1卖' }, '二卖': { color: '#8b949e', label: '2卖' }, '三卖': { color: '#58a6ff', label: '3卖' },
+        '✗推翻': { color: '#666666', label: '✗' },
       }
       const markers: any[] = []
       const seen = new Set<string>()

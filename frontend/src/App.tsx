@@ -751,15 +751,27 @@ export default function App() {
           ) : sidebarTab === 'chanlun' ? (
             <div className="watchlist-items">
               {/* 类型过滤 */}
-              <div className="picks-strategy-bar" style={{ display: 'flex', gap: 4, padding: '4px 8px', borderBottom: '1px solid var(--border)' }}>
-                {['', '一买', '二买', '三买', '二三买', '一卖', '二卖', '三卖'].map(t => (
-                  <button key={t || 'all'}
-                    className={`range-btn ${chanlunTypeFilter === t ? 'active' : ''}`}
-                    onClick={() => setChanlunTypeFilter(t)}
-                    style={{ fontSize: 11, padding: '2px 6px' }}>
-                    {t === '二三买' ? '二买+三买' : (t || '全部')}
-                  </button>
-                ))}
+              <div className="picks-strategy-bar" style={{ padding: '4px 8px', borderBottom: '1px solid var(--border)' }}>
+                <div style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
+                  {['', '一买', '二买', '三买', '二三买', 'd3', 'w30'].map(t => (
+                    <button key={t || 'all'}
+                      className={`range-btn ${chanlunTypeFilter === t ? 'active' : ''}`}
+                      onClick={() => setChanlunTypeFilter(t)}
+                      style={{ fontSize: 11, padding: '2px 6px' }}>
+                      {t === '' ? '全' : t === 'd3' ? 'D3' : t === 'w30' ? 'W30' : t.replace('二三买', '2+3买').replace('一买', '1买').replace('二买', '2买').replace('三买', '3买')}
+                    </button>
+                  ))}
+                </div>
+                <div style={{ display: 'flex', gap: 4 }}>
+                  {['一卖', '二卖', '三卖', '二三卖'].map(t => (
+                    <button key={t}
+                      className={`range-btn ${chanlunTypeFilter === t ? 'active' : ''}`}
+                      onClick={() => setChanlunTypeFilter(t)}
+                      style={{ fontSize: 11, padding: '2px 6px' }}>
+                      {t === '二三卖' ? '2+3卖' : t.replace('一卖', '1卖').replace('二卖', '2卖').replace('三卖', '3卖')}
+                    </button>
+                  ))}
+                </div>
               </div>
               {/* 日期选择 */}
               {chanlunDates.length > 0 && (
@@ -800,14 +812,17 @@ export default function App() {
                   })
                   return mergedList.map(s => (
                     <div key={s.symbol + s.date + s.type}
-                      className={`watchlist-item ${currentStock?.symbol === s.symbol ? 'active' : ''}`}
-                      onClick={() => loadStock(s.symbol, s.name)}>
+                      className={`watchlist-item ${currentStock?.symbol === s.symbol ? 'active' : ''} ${s.status === 'error' ? 'sig-error' : ''}`}
+                      onClick={() => loadStock(s.symbol, s.name, s.date)}
+                      style={s.status === 'error' ? { opacity: 0.55 } : undefined}>
                       <div style={{ flex: 1 }}>
                         <span className="wl-sym">{s.symbol}</span>
                         <span className="wl-name">{s.name}</span>
                       </div>
                       <div className="pc-tags" style={{ flexShrink: 0 }}>
-                        <span className="pick-tag" style={{ color: s.type.includes('买') ? '#f0883e' : '#58a6ff' }}>{s.type}</span>
+                        <span className="pick-tag" style={{ color: s.status === 'error' ? '#ff4444' : (s.type.includes('买') ? '#f0883e' : '#58a6ff') }}>
+                          {s.type}{s.status === 'error' ? '✗' : ''}
+                        </span>
                         <span className="pick-tag">{s.price?.toFixed(2)}</span>
                         {s.zd > 0 && <span className="pick-tag">{s.zd.toFixed(1)}~{s.zg.toFixed(1)}</span>}
                       </div>

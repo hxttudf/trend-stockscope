@@ -276,14 +276,165 @@ def reorder_watchlist():
     return jsonify({"status": "ok"})
 
 
+_d3_kline_cache = {}  # symbol -> (closes, vols, d2i) 模块级缓存(K线)
+
+
+def _d3_fetch(symbol):
+    """查K线(带缓存)"""
+    if symbol in _d3_kline_cache:
+        return _d3_kline_cache[symbol]
+    conn = db_conn(SEQUOIA_DB)
+    rows = conn.execute(
+        "SELECT date, close, close_qfq, volume FROM stock_daily "
+        "WHERE symbol=? AND close_qfq>0 ORDER BY date", (symbol,)).fetchall()
+    conn.close()
+    if len(rows) < 120:
+        _d3_kline_cache[symbol] = None
+        return None
+    pc = ([r[2] for r in rows], [r[3] for r in rows], {r[0]: i for i, r in enumerate(rows)})
+    _d3_kline_cache[symbol] = pc
+    return pc
+
+
+def _d3_check_data(closes, vols, d2i, sdate):
+    """D3老高5条件(纯内存): 均线多头+回踩2-15%+底部≥120天+均线上翘+放量启动"""
+    idx = d2i.get(sdate)
+    if idx is None or idx < 60:
+        return False
+    i = idx
+    cur = closes[i]
+    ma20 = sum(closes[i - 19:i + 1]) / 20
+    ma60 = sum(closes[i - 59:i + 1]) / 60
+    ma20_5 = sum(closes[i - 24:i - 4]) / 20
+    if ma60 <= 0 or not (cur > ma20 > ma60):
+        return False
+    dist = (cur - ma20) / ma20 * 100
+    if not (2 <= dist <= 15):
+        return False
+    lo = min(closes[max(0, i - 249):i + 1])
+    li = closes[max(0, i - 249):i + 1].index(lo) + max(0, i - 249)
+    if (i - li) < 120:
+        return False
+    if not (ma20 > ma20_5):
+        return False
+    for k in range(1, 11):
+        if i - k < 1:
+            break
+        chg = (closes[i - k] / closes[i - k - 1] - 1) * 100
+        a = sum(vols[max(0, i - k - 20):i - k]) / min(20, i - k) if i - k > 0 else 1
+        if chg >= 3 and (vols[i - k] / a if a else 0) >= 1.5:
+            return True
+    return False
+
+
+def _d3_check(symbol, sdate):
+    pc = _d3_fetch(symbol)
+    if pc is None:
+        return False
+    return _d3_check_data(pc[0], pc[1], pc[2], sdate)
+
+
+def _d3_warmup(conn, dates):
+    """批量预热K线缓存: 一次SQL拿全部所需股票K线"""
+    syms = set()
+    for (d,) in dates:
+        for r in conn.execute(
+                "SELECT symbol FROM chanlun_signals WHERE signal_date=? AND signal_type='二买' AND status='ok'",
+                (d,)).fetchall():
+            syms.add(r[0])
+    missing = [s for s in syms if s not in _d3_kline_cache]
+    if not missing:
+        return
+    seq = db_conn(SEQUOIA_DB)
+    for i in range(0, len(missing), 300):
+        batch = missing[i:i + 300]
+        rows = seq.execute(
+            f"SELECT symbol, date, close_qfq, volume FROM stock_daily "
+            f"WHERE symbol IN ({','.join('?' * len(batch))}) AND close_qfq>0 ORDER BY symbol, date",
+            batch).fetchall()
+        per = {}
+        for r in rows:
+            per.setdefault(r[0], []).append(r)
+        for s in batch:
+            k = per.get(s, [])
+            if len(k) < 120:
+                _d3_kline_cache[s] = None
+            else:
+                # r[1]=date, r[2]=close_qfq, r[3]=volume
+                _d3_kline_cache[s] = ([r[2] for r in k], [r[3] for r in k], {r[1]: i for i, r in enumerate(k)})
+    seq.close()
+
+
+def _d3_list(conn, date):
+    """date当日符合D3(标记列)的二买信号"""
+    return conn.execute(
+        "SELECT symbol, name, signal_type, signal_date, price, ref_zd, ref_zg, status FROM chanlun_signals "
+        "WHERE signal_date=? AND d3=1 ORDER BY symbol", (date,)).fetchall()
+
+
+_worth_map = None
+
+
+def _worth_load(conn):
+    """worth确认日期映射: {symbol: [W日...]}"""
+    global _worth_map
+    if _worth_map is None:
+        _worth_map = {}
+        for r in conn.execute(
+                "SELECT date, symbol FROM bottom_confirm_picks WHERE status='worth'").fetchall():
+            _worth_map.setdefault(r[1], []).append(r[0])
+    return _worth_map
+
+
+def _w30_check(conn, symbol, sdate):
+    """缠论买点信号日 是否在 worth确认后30天内(含同日)"""
+    import datetime
+    wm = _worth_load(conn)
+    for w in wm.get(symbol, []):
+        d0 = datetime.date.fromisoformat(w)
+        d1 = datetime.date.fromisoformat(sdate)
+        if 0 <= (d1 - d0).days <= 30:
+            return True
+    return False
+
+
+def _w30_list(conn, date):
+    """date当日 符合'worth确认后30天内'(标记列)的缠论买点"""
+    return conn.execute(
+        "SELECT symbol, name, signal_type, signal_date, price, ref_zd, ref_zg, status FROM chanlun_signals "
+        "WHERE signal_date=? AND w30=1 ORDER BY symbol", (date,)).fetchall()
+
+
 # ── 缠论信号(静态路由必须先于 /api/chanlun/<symbol>, 否则被当作symbol) ──
 @app.route("/api/chanlun/dates")
 def api_chanlun_dates():
-    """缠论信号日期列表: ?type=三买 时只统计该类型"""
+    """缠论信号日期列表: ?type=三买 时只统计该类型; type=二三买 统计重合信号"""
     conn = db_conn(TREND_DB)
     typ = request.args.get("type", "")
     try:
-        if typ:
+        if typ == "二三买":
+            rows = conn.execute(
+                "SELECT a.signal_date, COUNT(DISTINCT a.symbol) FROM chanlun_signals a "
+                "JOIN chanlun_signals b ON a.symbol=b.symbol AND a.signal_date=b.signal_date "
+                "WHERE a.signal_type='二买' AND b.signal_type='三买' "
+                "GROUP BY a.signal_date ORDER BY a.signal_date DESC LIMIT 60").fetchall()
+        elif typ == "二三卖":
+            rows = conn.execute(
+                "SELECT a.signal_date, COUNT(DISTINCT a.symbol) FROM chanlun_signals a "
+                "JOIN chanlun_signals b ON a.symbol=b.symbol AND a.signal_date=b.signal_date "
+                "WHERE a.signal_type='二卖' AND b.signal_type='三卖' "
+                "GROUP BY a.signal_date ORDER BY a.signal_date DESC LIMIT 60").fetchall()
+        elif typ == "w30":
+            # W30: worth确认后30天内的缠论买点(标记列) — 最近60个日期
+            rows = conn.execute(
+                "SELECT signal_date, COUNT(*) FROM chanlun_signals WHERE w30=1 "
+                "GROUP BY signal_date ORDER BY signal_date DESC LIMIT 60").fetchall()
+        elif typ == "d3":
+            # D3: 二买+老高5条件(标记列) — 最近60个日期
+            rows = conn.execute(
+                "SELECT signal_date, COUNT(*) FROM chanlun_signals WHERE d3=1 "
+                "GROUP BY signal_date ORDER BY signal_date DESC LIMIT 60").fetchall()
+        elif typ:
             rows = conn.execute(
                 "SELECT signal_date, COUNT(*) FROM chanlun_signals WHERE signal_type=? "
                 "GROUP BY signal_date ORDER BY signal_date DESC LIMIT 60", (typ,)).fetchall()
@@ -303,15 +454,26 @@ def api_chanlun_signals():
     typ = request.args.get("type", "")
     conn = db_conn(TREND_DB)
     try:
-        if typ == "二三买":
+        if typ == "w30":
+            rows = _w30_list(conn, date)
+        elif typ == "d3":
+            rows = _d3_list(conn, date)
+        elif typ == "二三买":
             rows = conn.execute(
                 "SELECT a.symbol, a.name, '二买+三买', a.signal_date, a.price, a.ref_zd, a.ref_zg "
                 "FROM chanlun_signals a JOIN chanlun_signals b "
                 "ON a.symbol=b.symbol AND a.signal_date=b.signal_date "
                 "WHERE a.signal_date=? AND a.signal_type='二买' AND b.signal_type='三买' "
                 "ORDER BY a.symbol", (date,)).fetchall()
+        elif typ == "二三卖":
+            rows = conn.execute(
+                "SELECT a.symbol, a.name, '二卖+三卖', a.signal_date, a.price, a.ref_zd, a.ref_zg "
+                "FROM chanlun_signals a JOIN chanlun_signals b "
+                "ON a.symbol=b.symbol AND a.signal_date=b.signal_date "
+                "WHERE a.signal_date=? AND a.signal_type='二卖' AND b.signal_type='三卖' "
+                "ORDER BY a.symbol", (date,)).fetchall()
         else:
-            q = "SELECT symbol, name, signal_type, signal_date, price, ref_zd, ref_zg FROM chanlun_signals WHERE signal_date=?"
+            q = "SELECT symbol, name, signal_type, signal_date, price, ref_zd, ref_zg, status FROM chanlun_signals WHERE signal_date=?"
             args = [date]
             if typ:
                 q += " AND signal_type=?"
@@ -321,15 +483,28 @@ def api_chanlun_signals():
     except Exception:
         return json.dumps([])
     return json.dumps([{"symbol": r[0], "name": r[1], "type": r[2], "date": r[3],
-                        "price": r[4], "zd": r[5], "zg": r[6]} for r in rows], ensure_ascii=False)
+                        "price": r[4], "zd": r[5], "zg": r[6], "status": r[7] if len(r) > 7 else "ok"} for r in rows], ensure_ascii=False)
 
 
 # ── Stock basic info ──────────────────────────────────────────
 @app.route("/api/chanlun/<symbol>")
 def api_chanlun(symbol):
-    """缠论分析(完整版): 笔/线段/中枢/走势类型/背驰/买卖点"""
+    """缠论分析(完整版): 笔/线段/中枢/走势类型/背驰/买卖点
+    附加: DB中被推翻的信号(status='error')以灰色✗标记追加到buy_sell"""
     import chanlun_full
-    return json.dumps(chanlun_full.analyze(symbol), ensure_ascii=False)
+    d = chanlun_full.analyze(symbol)
+    try:
+        mp = db_conn(TREND_DB)
+        errs = mp.execute(
+            "SELECT signal_type, signal_date, price FROM chanlun_signals "
+            "WHERE symbol=? AND status='error'", (symbol,)).fetchall()
+        mp.close()
+        for t, sd, p in errs:
+            d.setdefault("buy_sell", []).append(
+                {"time": sd, "type": "✗推翻", "price": round(p, 2) if p else 0, "status": "error"})
+    except Exception:
+        pass
+    return json.dumps(d, ensure_ascii=False)
 
 
 @app.route("/api/stock/<symbol>")
