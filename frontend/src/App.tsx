@@ -805,6 +805,8 @@ export default function App() {
                       if (!byKey[key].type.includes(s.type)) byKey[key].type += '+' + s.type
                       byKey[key].zd = byKey[key].zd || s.zd
                       byKey[key].zg = byKey[key].zg || s.zg
+                      // status: 任一信号被推翻(error)则合并后整体标error
+                      if (s.status === 'error') byKey[key].status = 'error'
                     } else {
                       byKey[key] = { ...s }
                       mergedList.push(byKey[key])
