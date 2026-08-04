@@ -199,7 +199,7 @@ export default function App() {
   // ── 缠论信号 ──
   useEffect(() => {
     const pv = chanlunPreview ? '&preview=1' : ''
-    const q = chanlunTypeFilter ? `/api/chanlun/dates?type=${encodeURIComponent(chanlunTypeFilter)}${pv}` : `/api/chanlun/dates${pv ? '?preview=1' : ''}`
+    const q = chanlunTypeFilter ? `/stockscope/api/chanlun/dates?type=${encodeURIComponent(chanlunTypeFilter)}${pv}` : `/stockscope/api/chanlun/dates${pv ? '?preview=1' : ''}`
     fetch(q).then(r => r.json()).then((dates: { date: string; total: number }[]) => {
       setChanlunDates(dates)
       if (dates.length > 0) {
@@ -217,7 +217,7 @@ export default function App() {
     if (selectedChanlunDate) {
       setChanlunSignals([])
       const pv = chanlunPreview ? '&preview=1' : ''
-      const q = `/api/chanlun/signals?date=${selectedChanlunDate}${chanlunTypeFilter ? `&type=${encodeURIComponent(chanlunTypeFilter)}` : ''}${pv}`
+      const q = `/stockscope/api/chanlun/signals?date=${selectedChanlunDate}${chanlunTypeFilter ? `&type=${encodeURIComponent(chanlunTypeFilter)}` : ''}${pv}`
       fetch(q).then(r => r.json()).then(data => {
         if (!cancelled) setChanlunSignals(data)
       })
@@ -263,7 +263,7 @@ export default function App() {
   // Load chanlun data when mode enabled or stock changes
   useEffect(() => {
     if (chanlunMode && currentStock) {
-      fetch(`/api/chanlun/${currentStock.symbol}`)
+      fetch(`/stockscope/api/chanlun/${currentStock.symbol}`)
         .then(r => r.json())
         .then(d => setChanlunData(d))
         .catch(() => setChanlunData(null))

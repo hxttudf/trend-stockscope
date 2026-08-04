@@ -16,6 +16,23 @@ SEQUOIA_DB = "/home/ubuntu/databases/Sequoia选股.db"
 SCOPE_DB = os.path.join(BASE_DIR, "stockscope.db")
 
 app = Flask(__name__, static_folder=FRONTEND_DIST, static_url_path="")
+
+
+class PrefixMiddleware:
+    """兼容路径前缀: 直接访问 :8004 时 /stockscope/xxx → /xxx (nginx已去前缀, 不受影响)"""
+
+    def __init__(self, app, prefix="/stockscope"):
+        self.app = app
+        self.prefix = prefix
+
+    def __call__(self, environ, start_response):
+        path = environ.get("PATH_INFO", "")
+        if path.startswith(self.prefix):
+            environ["PATH_INFO"] = path[len(self.prefix):] or "/"
+        return self.app(environ, start_response)
+
+
+app.wsgi_app = PrefixMiddleware(app.wsgi_app)
 CORS(app)
 
 

@@ -1,4 +1,4 @@
-const API_BASE = '/api'
+const API_BASE = '/stockscope/api'
 
 export interface StockInfo {
   symbol: string
