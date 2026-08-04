@@ -203,7 +203,7 @@ def get_pick_dates():
         ).fetchall()
     else:
         rows = cur.execute(
-            "SELECT date, total_picks, strategies FROM daily_summary ORDER BY date DESC LIMIT 200"
+            "SELECT date, total_picks, strategies FROM daily_summary WHERE total_picks > 0 ORDER BY date DESC LIMIT 200"
         ).fetchall()
     conn.close()
     return jsonify([dict(r) for r in rows])

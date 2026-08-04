@@ -31,10 +31,9 @@ def sync():
     
     if not rows:
         print(f"{TODAY} — no picks found in trend_picks.db")
-        # 今天没数据，记录空摘要
+        # 无信号不写空摘要(避免前端显示0信号日期); 清理该日残留空记录
         scope_conn.execute(
-            "INSERT OR REPLACE INTO daily_summary (date, total_picks, strategies) VALUES (?, 0, '')",
-            (TODAY,)
+            "DELETE FROM daily_summary WHERE date = ? AND total_picks <= 0", (TODAY,)
         )
         scope_conn.commit()
         scope_conn.close()
