@@ -844,10 +844,13 @@ export default function App() {
                       </div>
                       <div className="pc-tags" style={{ flexShrink: 0 }}>
                         {s.strength === 'strong' && (
-                          <span className="pick-tag" style={{ color: '#3fb950', borderColor: '#3fb950' }}>🟢强</span>
+                          <span className="pick-tag" style={{ color: '#3fb950', borderColor: '#3fb950' }}>🟢强{s.score?.toFixed(0)}</span>
                         )}
                         {s.strength === 'weak' && (
-                          <span className="pick-tag" style={{ color: '#f85149', borderColor: '#f85149' }}>🔴弱</span>
+                          <span className="pick-tag" style={{ color: '#f85149', borderColor: '#f85149' }}>🔴弱{s.score?.toFixed(0)}</span>
+                        )}
+                        {(s.strength === 'neutral' || !s.strength) && s.score > 60 && (
+                          <span className="pick-tag" style={{ color: '#8b949e', borderColor: '#8b949e' }}>分{s.score?.toFixed(0)}</span>
                         )}
                         <span className="pick-tag" style={{ color: hasErr ? '#ff4444' : (dispType.includes('买') ? '#f0883e' : '#58a6ff') }}>
                           {dispType}
