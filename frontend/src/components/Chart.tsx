@@ -74,6 +74,13 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, b
   const ma60Ref = useRef<ISeriesApi<'Line'> | null>(null)
   const signalScatterRef = useRef<ISeriesApi<'Line'> | null>(null)
   const [chartReady, setChartReady] = useState(false)
+  const [chanOverlayReady, setChanOverlayReady] = useState(false)
+  // chart就绪后延迟挂载缠论overlay: K线先渲染, 缠论线随后浮现(避免首帧卡顿)
+  useEffect(() => {
+    if (!chartReady) { setChanOverlayReady(false); return }
+    const t = setTimeout(() => setChanOverlayReady(true), 250)
+    return () => clearTimeout(t)
+  }, [chartReady])
   const extraSeriesRef = useRef<ISeriesApi<'Line'>[]>([])
   const chanSeriesRef = useRef<ISeriesApi<'Line'>[]>([])
   const chanPriceLinesRef = useRef<ReturnType<ISeriesApi<'Candlestick'>['createPriceLine']>[]>([])
@@ -435,7 +442,7 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, b
     <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
       <div ref={containerRef} style={{ width: '100%', flex: 1, minHeight: 0, touchAction: 'manipulation' }} />
       <div ref={macdContainerRef} style={{ width: '100%', height: 120, flexShrink: 0, borderTop: '1px solid var(--border, #30363d)' }} />
-      {chartReady && <ChanlunOverlay chanlun={chanlun ?? null} kline={kline} chartRef={chartRef} candleSeriesRef={candleSeriesRef} />}
+      {chartReady && chanOverlayReady && <ChanlunOverlay chanlun={chanlun ?? null} kline={kline} chartRef={chartRef} candleSeriesRef={candleSeriesRef} />}
     </div>
   )
 }
