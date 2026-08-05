@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback, memo } from 'react'
+import { useEffect, useRef, useCallback, memo, useState } from 'react'
 import { createChart, IChartApi, ISeriesApi, CandlestickData, LineData, HistogramData, Time } from 'lightweight-charts'
 import { KlinePoint, Signal } from '../utils/api'
 
@@ -73,6 +73,7 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, b
   const ma20Ref = useRef<ISeriesApi<'Line'> | null>(null)
   const ma60Ref = useRef<ISeriesApi<'Line'> | null>(null)
   const signalScatterRef = useRef<ISeriesApi<'Line'> | null>(null)
+  const [chartReady, setChartReady] = useState(false)
   const extraSeriesRef = useRef<ISeriesApi<'Line'>[]>([])
   const chanSeriesRef = useRef<ISeriesApi<'Line'>[]>([])
   const chanPriceLinesRef = useRef<ReturnType<ISeriesApi<'Candlestick'>['createPriceLine']>[]>([])
@@ -272,6 +273,7 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, b
       // 副图初始跟随
       const r0 = chart.timeScale().getVisibleLogicalRange()
       if (r0) macdChart.timeScale().setVisibleLogicalRange(r0)
+      setChartReady(true)
     }
 
     return () => {
@@ -280,6 +282,7 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, b
       chart.remove()
       macdChart?.remove()
       macdChartRef.current = null
+      setChartReady(false)
     }
   }, [handleCrosshair])
 
@@ -432,7 +435,7 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, b
     <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
       <div ref={containerRef} style={{ width: '100%', flex: 1, minHeight: 0, touchAction: 'manipulation' }} />
       <div ref={macdContainerRef} style={{ width: '100%', height: 120, flexShrink: 0, borderTop: '1px solid var(--border, #30363d)' }} />
-      <ChanlunOverlay chanlun={chanlun ?? null} kline={kline} chartRef={chartRef} candleSeriesRef={candleSeriesRef} />
+      {chartReady && <ChanlunOverlay chanlun={chanlun ?? null} kline={kline} chartRef={chartRef} candleSeriesRef={candleSeriesRef} />}
     </div>
   )
 }
