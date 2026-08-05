@@ -619,28 +619,24 @@ export default function App() {
         {/* Chart */}
         <div className="chart-area">
           <div className="chart-container">
-            {currentStock && kline ? (
-              <Chart
-                kline={kline.kline}
-                signals={kline.signals}
-                symbol={currentStock.symbol}
-                range={range.days}
-                onCrosshairMove={handleCrosshairMove}
-                onChartClick={handleChartClick}
-                benchmarkTime={benchmarkIdx !== null ? kline.kline[benchmarkIdx]?.time : null}
-                focusDate={focusDate}
-                chanlun={chanlunMode ? chanlunData : null}
-              />
-            ) : (
+            <Chart
+              kline={kline?.kline ?? []}
+              signals={kline?.signals ?? []}
+              symbol={currentStock?.symbol ?? ''}
+              range={range.days}
+              onCrosshairMove={handleCrosshairMove}
+              onChartClick={handleChartClick}
+              benchmarkTime={benchmarkIdx !== null && kline ? kline.kline[benchmarkIdx]?.time : null}
+              focusDate={focusDate}
+              chanlun={chanlunMode ? chanlunData : null}
+            />
+            {(!currentStock || !kline) && (
               <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                height: '100%',
-                color: 'var(--text-muted)',
-                fontSize: 14,
-                flexDirection: 'column',
-                gap: 8,
+                position: 'absolute', inset: 0,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: 'var(--text-muted)', fontSize: 14,
+                flexDirection: 'column', gap: 8,
+                background: 'var(--bg, #0d1117)', pointerEvents: 'none', zIndex: 5,
               }}>
                 <div style={{ fontSize: 32 }}>📈</div>
                 <div>搜索股票查看K线图</div>
