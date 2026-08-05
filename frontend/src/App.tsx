@@ -93,7 +93,7 @@ export default function App() {
   const [chanlunPreview, setChanlunPreview] = useState(false)  // 盘中预览模式
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null)
   const [measureMode, setMeasureMode] = useState(false)
-  const [chanlunMode, setChanlunMode] = useState(false)
+  const [chanlunMode, setChanlunMode] = useState(true)  // 默认选中缠(笔/中枢/买卖点)
   const [chanlunData, setChanlunData] = useState<any>(null)
   const [benchmarkIdx, setBenchmarkIdx] = useState<number | null>(null)
   const [focusDate, setFocusDate] = useState<string | null>(null)  // 选股跳转时聚焦的日期
