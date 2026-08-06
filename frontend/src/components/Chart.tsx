@@ -85,6 +85,7 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, b
   const ma60Ref = useRef<ISeriesApi<'Line'> | null>(null)
   const signalScatterRef = useRef<ISeriesApi<'Line'> | null>(null)
   const [chartReady, setChartReady] = useState(false)
+  const locateTimer = useRef<number | null>(null)
   const [chanOverlayReady, setChanOverlayReady] = useState(false)
   // chart就绪后延迟挂载缠论overlay: K线先渲染, 缠论线随后浮现(避免首帧卡顿)
   useEffect(() => {
@@ -343,50 +344,6 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, b
     ma20Ref.current?.setData(calcMA(20))
     ma60Ref.current?.setData(calcMA(60))
 
-    // K线数据设置后延迟定位(等TradingView布局完成): 有focusDate跳指定日期, 否则定位最新
-    setTimeout(() => {
-      if (focusDate) {
-        const fi = candleData.findIndex(d => bdStr(d.time) === focusDate)
-        if (fi >= 0) {
-          chartRef.current?.timeScale().setVisibleRange({
-            from: candleData[Math.max(0, fi - 80)].time,
-            to: candleData[Math.min(candleData.length - 1, fi + 80)].time,
-          })
-        } else {
-          // focusDate找不到(数据范围外)则直接显示最新120根(无动画)
-          const n = Math.min(120, candleData.length)
-          chartRef.current?.timeScale().setVisibleRange({
-            from: candleData[candleData.length - n].time,
-            to: candleData[candleData.length - 1].time,
-          })
-        }
-      } else {
-        // 无focusDate: 直接显示最新120根(无动画, 不滚动)
-        const n = Math.min(120, candleData.length)
-        chartRef.current?.timeScale().setVisibleRange({
-          from: candleData[candleData.length - n].time,
-          to: candleData[candleData.length - 1].time,
-        })
-      }
-    }, 300)
-    setTimeout(() => {
-      if (focusDate) {
-        const fi = candleData.findIndex(d => bdStr(d.time) === focusDate)
-        if (fi >= 0) {
-          chartRef.current?.timeScale().setVisibleRange({
-            from: candleData[Math.max(0, fi - 80)].time,
-            to: candleData[Math.min(candleData.length - 1, fi + 80)].time,
-          })
-        }
-      } else {
-        const vr = Math.min(range, candleData.length)
-        if (vr > 0) chartRef.current?.timeScale().setVisibleRange({
-          from: candleData[candleData.length - vr].time,
-          to: candleData[candleData.length - 1].time,
-        })
-      }
-    }, 1500)
-
     // MACD (12, 26, 9)
     const emaArr = (data: number[], period: number): number[] => {
       const k = 2 / (period + 1)
@@ -448,17 +405,25 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, b
       }
     }
 
-    // Step 1: 先设可见范围（缩放）
-    if (focusDate) {
-      const focusIdx = candleData.findIndex(d => bdStr(d.time) === focusDate)
-      if (focusIdx >= 0) {
-        const hr = 80
-        chartRef.current?.timeScale().setVisibleRange({ from: candleData[Math.max(0, focusIdx - hr)].time, to: candleData[Math.min(candleData.length - 1, focusIdx + hr)].time })
+    // Step 1: 先设可见范围（缩放）— 立即执行 + 800ms debounce重试(布局完成后最终生效, 不闪烁)
+    const doLocate = () => {
+      if (!chartRef.current) return
+      if (focusDate) {
+        const focusIdx = candleData.findIndex(d => bdStr(d.time) === focusDate)
+        if (focusIdx >= 0) {
+          chartRef.current.timeScale().setVisibleRange({ from: candleData[Math.max(0, focusIdx - 80)].time, to: candleData[Math.min(candleData.length - 1, focusIdx + 80)].time })
+        } else {
+          const n = Math.min(120, candleData.length)
+          chartRef.current.timeScale().setVisibleRange({ from: candleData[candleData.length - n].time, to: candleData[candleData.length - 1].time })
+        }
+      } else {
+        const vr = Math.min(range, candleData.length)
+        if (vr > 0) chartRef.current.timeScale().setVisibleRange({ from: candleData[candleData.length - vr].time, to: candleData[candleData.length - 1].time })
       }
-    } else {
-      const vr = Math.min(range, candleData.length)
-      chartRef.current?.timeScale().setVisibleRange({ from: candleData[candleData.length - vr].time, to: candleData[candleData.length - 1].time })
     }
+    doLocate()
+    if (locateTimer.current) clearTimeout(locateTimer.current)
+    locateTimer.current = window.setTimeout(doLocate, 800)
     // 同步MACD副图时间轴
     const syncRange = chartRef.current?.timeScale().getVisibleLogicalRange()
     if (syncRange) macdChartRef.current?.timeScale().setVisibleLogicalRange(syncRange)
