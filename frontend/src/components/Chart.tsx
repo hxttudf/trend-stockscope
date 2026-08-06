@@ -86,6 +86,7 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, b
   const signalScatterRef = useRef<ISeriesApi<'Line'> | null>(null)
   const [chartReady, setChartReady] = useState(false)
   const locateTimer = useRef<number | null>(null)
+  const locateTimer2 = useRef<number | null>(null)
   const [chanOverlayReady, setChanOverlayReady] = useState(false)
   // chart就绪后延迟挂载缠论overlay: K线先渲染, 缠论线随后浮现(避免首帧卡顿)
   useEffect(() => {
@@ -423,7 +424,11 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, b
     }
     doLocate()
     if (locateTimer.current) clearTimeout(locateTimer.current)
-    locateTimer.current = window.setTimeout(doLocate, 800)
+    locateTimer.current = window.setTimeout(doLocate, 300)
+    const t2 = window.setTimeout(doLocate, 800)
+    // 800ms的定时器不重设(300ms的已清), 避免多次定位
+    if (locateTimer2.current) clearTimeout(locateTimer2.current)
+    locateTimer2.current = t2
     // 同步MACD副图时间轴
     const syncRange = chartRef.current?.timeScale().getVisibleLogicalRange()
     if (syncRange) macdChartRef.current?.timeScale().setVisibleLogicalRange(syncRange)
@@ -561,19 +566,26 @@ function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef }: {
         const idx = kline.findIndex(k => k.time === bs.time)
         if (idx < 0) return
         const c = cfg[bs.type] || { color: '#888', label: bs.type }
+        // position兜底: 买点下方/卖点上方(server追加的✗可能无pos)
+        const pos = bs.pos || (bs.type.includes('卖') ? 'aboveBar' : 'belowBar')
         markers.push({
-          time: toBD(bs.time), position: bs.pos, color: c.color,
-          shape: bs.pos === 'aboveBar' ? 'arrowDown' : 'arrowUp', text: c.label,
+          time: toBD(bs.time), position: pos, color: c.color,
+          shape: pos === 'aboveBar' ? 'arrowDown' : 'arrowUp', text: c.label,
+          price: bs.price || 0,
         })
       })
       if (markers.length) {
-        // 挂到笔折线series上(第2个, 包含所有笔端点; 买卖点必是笔端点)
-        const biSeries = seriesRef.current[1]
-        if (biSeries) {
+        // 按时间倒序(最近在前), 分批渲染(每批≤10, lightweight-charts限制)
+        // 关键: 每个series必须setData对应时间点(marker才按time精确对齐, 否则错位到最近端点)
+        markers.sort((a, b) => bdStr(a.time as Time) < bdStr(b.time as Time) ? 1 : -1)
+        const BATCH = 10
+        for (let i = 0; i < markers.length; i += BATCH) {
+          const batch = markers.slice(i, i + BATCH)
           try {
-            // 按时间倒序(最近在前), 画全部信号(不截断)
-            markers.sort((a, b) => (a.time as string) < (b.time as string) ? 1 : -1)
-            biSeries.setMarkers(markers)
+            const s = chart.addLineSeries({ color: 'transparent', lineWidth: 1, lastValueVisible: false, priceLineVisible: false })
+            s.setData(batch.map(m => ({ time: m.time, value: m.price || 0 })))
+            s.setMarkers(batch)
+            seriesRef.current.push(s)
           } catch { /* noop */ }
         }
       }
