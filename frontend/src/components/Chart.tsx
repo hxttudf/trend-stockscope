@@ -454,7 +454,8 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, b
           // 之前 String(m.time) = '[object Object]' → 匹配失败 → value=0 → 价格轴拉到0压扁K线
           const idx = kline.findIndex(k => k.time === bdStr(m.time as Time))
           if (idx < 0) continue  // 找不到对应K线则跳过(避免value=0污染价格轴)
-          sigData.push({ time: m.time, value: kline[idx].close })
+          // 数据点取high/low(按marker位置): aboveBar→high(图标在K线上方不压K线), belowBar→low
+          sigData.push({ time: m.time, value: m.position === 'aboveBar' ? kline[idx].high : kline[idx].low })
         }
         if (sigData.length) {
           try { sigSeries.setData(sigData) } catch (e) { console.warn('[选股series跳过]', e) }
