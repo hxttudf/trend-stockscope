@@ -123,7 +123,8 @@ export default function App() {
   const [measureMode, setMeasureMode] = useState(false)
   const [chanlunMode, setChanlunMode] = useState(true)  // 默认选中缠(笔/中枢/买卖点)
   const [chanlunData, setChanlunData] = useState<any>(null)
-  const loadSeq = useRef(0)  // 请求序号: 防快速切股竞态(旧响应覆盖新)
+  const loadSeq = useRef(0)  // K线请求序号: 防快速切股竞态(旧响应覆盖新)
+  const chanlunSeq = useRef(0)  // chanlun请求独立序号(不干扰K线)
   const [benchmarkIdx, setBenchmarkIdx] = useState<number | null>(null)
   const [focusDate, setFocusDate] = useState<string | null>(null)  // 选股跳转时聚焦的日期
 
@@ -286,11 +287,11 @@ export default function App() {
   // Load chanlun data when mode enabled or stock changes
   useEffect(() => {
     if (chanlunMode && currentStock) {
-      const seq = ++loadSeq.current
+      const seq = ++chanlunSeq.current
       fetch(`/stockscope/api/chanlun/${currentStock.symbol}`)
         .then(r => r.json())
-        .then(d => { if (seq === loadSeq.current) setChanlunData(d) })
-        .catch(() => { if (seq === loadSeq.current) setChanlunData(null) })
+        .then(d => { if (seq === chanlunSeq.current) setChanlunData(d) })
+        .catch(() => { if (seq === chanlunSeq.current) setChanlunData(null) })
     } else {
       setChanlunData(null)
     }
