@@ -234,15 +234,8 @@ export default function App() {
     const data = await getKline(symbol, qfq, 1000)
     setKline(data)
     setSignals(data.signals)
-    // 有指定信号日期则跳转到该日期，否则跳转到最新信号
-    if (signalDate) {
-      setFocusDate(signalDate)
-    } else if (data.signals?.length) {
-      const latestSignal = data.signals.reduce((latest, s) => s.date > latest ? s.date : latest, data.signals[0].date)
-      setFocusDate(latestSignal)
-    } else {
-      setFocusDate(null)
-    }
+    // 有指定信号日期则跳转到该日期，否则定位最新K线(不跳选股信号日期—选股信号可能很旧)
+    setFocusDate(signalDate || null)
   }, [qfq, selectedPickDate])
 
   // Reload kline when qfq changes and a stock is selected
@@ -252,10 +245,7 @@ export default function App() {
       getKline(s.symbol, qfq, 1000).then(data => {
         setKline(data)
         setSignals(data.signals)
-        if (data.signals?.length) {
-          const latest = data.signals.reduce((a, b) => a.date > b.date ? a : b)
-          setFocusDate(latest.date)
-        }
+        // qfq切换保持当前focusDate不变(不跳选股信号日期)
       })
     }
   }, [qfq])

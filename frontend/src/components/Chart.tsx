@@ -436,8 +436,8 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, b
     })
     extraSeriesRef.current = []
     if (markers.length) {
-      candleSeriesRef.current.setMarkers(markers.slice(0, 10))
-      const rest = markers.slice(10)
+      // 选股markers全部挂独立分批series(不挂主K线, 避免覆盖买卖点markers)
+      const rest = markers
       for (let i = 0; i < rest.length; i += 10) {
         const batch = rest.slice(i, i + 10)
         const sigSeries = chartRef.current?.addLineSeries({
