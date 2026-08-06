@@ -529,7 +529,12 @@ function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef }: {
         ...(chanlun.buy_sell || []).map(s => ({ ...s, pos: 'belowBar' as const })),
         ...(chanlun.sell_chain || []).map(s => ({ ...s, pos: 'aboveBar' as const })),
       ]
+      // 被推翻信号的时点(✗类型) — 这些时点只画✗, 不画原类型
+      const overturnedTimes = new Set(allSignals.filter(s => (s.type || '').startsWith('✗')).map(s => s.time))
       allSignals.forEach(bs => {
+        const isOv = (bs.type || '').startsWith('✗')
+        // 被推翻的时点只画✗, 跳过原类型(避免1买与✗1买重叠)
+        if (overturnedTimes.has(bs.time) && !isOv) return
         const key = `${bs.time}_${bs.type}`
         if (seen.has(key)) return
         seen.add(key)
