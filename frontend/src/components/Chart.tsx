@@ -342,11 +342,20 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, b
             to: candleData[Math.min(candleData.length - 1, fi + 80)].time,
           })
         } else {
-          // focusDate找不到(数据范围外)则定位最新
-          chartRef.current?.timeScale().scrollToRealTime()
+          // focusDate找不到(数据范围外)则直接显示最新120根(无动画)
+          const n = Math.min(120, candleData.length)
+          chartRef.current?.timeScale().setVisibleRange({
+            from: candleData[candleData.length - n].time,
+            to: candleData[candleData.length - 1].time,
+          })
         }
       } else {
-        chartRef.current?.timeScale().scrollToRealTime()
+        // 无focusDate: 直接显示最新120根(无动画, 不滚动)
+        const n = Math.min(120, candleData.length)
+        chartRef.current?.timeScale().setVisibleRange({
+          from: candleData[candleData.length - n].time,
+          to: candleData[candleData.length - 1].time,
+        })
       }
     }, 400)
 
