@@ -632,7 +632,7 @@ export default function App() {
         {/* Chart */}
         <div className="chart-area">
           <div className="chart-container">
-            <ChartErrorBoundary>
+            <ChartErrorBoundary key={currentStock?.symbol || 'none'}>
             <Chart
               kline={kline?.kline ?? []}
               signals={kline?.signals ?? []}

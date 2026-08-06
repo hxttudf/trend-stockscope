@@ -449,13 +449,11 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, b
         // LineSeries 需要有数据点，marker 才会渲染
         const sigData: { time: Time; value: number }[] = []
         for (const m of batch) {
-          if (!m.time) continue
           const idx = kline.findIndex(k => k.time === String(m.time))
-          sigData.push({ time: m.time, value: idx >= 0 ? (kline[idx].close ?? 0) : 0 })
+          sigData.push({ time: m.time, value: idx >= 0 ? kline[idx].close : 0 })
         }
-        if (sigData.length) {
-          try { sigSeries.setData(sigData); sigSeries.setMarkers(batch) } catch { /* 跳过 */ }
-        }
+        sigSeries.setData(sigData)
+        sigSeries.setMarkers(batch)
       }
     }
   }, [kline, signals, symbol, range, focusDate, benchmarkTime])
@@ -495,32 +493,28 @@ function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef }: {
     // 线段折线 (完整版主图: 亮黄粗线)
     if (chanlun.segs?.length) {
       const segData: LineData[] = chanlun.segs
-        .filter(s => s.time && s.price != null && validTimes.has(s.time))
-        .map(s => ({ time: toBD(s.time), value: Number(s.price) || 0 }))
+        .filter(s => validTimes.has(s.time))
+        .map(s => ({ time: toBD(s.time), value: s.price }))
       if (segData.length >= 2) {
-        try {
-          const s = chart.addLineSeries({
-            color: '#f0d43a', lineWidth: 2, lastValueVisible: false, priceLineVisible: false,
-          })
-          s.setData(segData)
-          seriesRef.current.push(s)
-        } catch { /* 跳过异常线段 */ }
+        const s = chart.addLineSeries({
+          color: '#f0d43a', lineWidth: 2, lastValueVisible: false, priceLineVisible: false,
+        })
+        s.setData(segData)
+        seriesRef.current.push(s)
       }
     }
 
     // 笔折线 (细灰线, 辅助)
     if (chanlun.bi?.length) {
       const biData: LineData[] = chanlun.bi
-        .filter(b => b.time && b.price != null && validTimes.has(b.time))
-        .map(b => ({ time: toBD(b.time), value: Number(b.price) || 0 }))
+        .filter(b => validTimes.has(b.time))
+        .map(b => ({ time: toBD(b.time), value: b.price }))
       if (biData.length >= 2) {
-        try {
-          const s = chart.addLineSeries({
-            color: 'rgba(160,160,170,0.55)', lineWidth: 1, lastValueVisible: false, priceLineVisible: false,
-          })
-          s.setData(biData)
-          seriesRef.current.push(s)
-        } catch { /* 跳过异常笔 */ }
+        const s = chart.addLineSeries({
+          color: 'rgba(160,160,170,0.55)', lineWidth: 1, lastValueVisible: false, priceLineVisible: false,
+        })
+        s.setData(biData)
+        seriesRef.current.push(s)
       }
     }
 
@@ -528,20 +522,15 @@ function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef }: {
     if (chanlun.last_zhongshu) {
       const { zd, zg } = chanlun.last_zhongshu
       if (zg > zd) {
-        if (zg == null || zd == null) { priceLinesRef.current = []; }
-        else {
-          try {
-            const pl1 = candle.createPriceLine({
-              price: Number(zg) || 0, color: 'rgba(240,101,101,0.7)',
-              lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: `中枢上(${chanlun.last_zhongshu.ext}段)`,
-            })
-            const pl2 = candle.createPriceLine({
-              price: Number(zd) || 0, color: 'rgba(80,180,120,0.7)',
-              lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: '中枢下',
-            })
-            priceLinesRef.current = [pl1, pl2]
-          } catch { priceLinesRef.current = [] }
-        }
+        const pl1 = candle.createPriceLine({
+          price: zg, color: 'rgba(240,101,101,0.7)',
+          lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: `中枢上(${chanlun.last_zhongshu.ext}段)`,
+        })
+        const pl2 = candle.createPriceLine({
+          price: zd, color: 'rgba(80,180,120,0.7)',
+          lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: '中枢下',
+        })
+        priceLinesRef.current = [pl1, pl2]
       }
     }
 
