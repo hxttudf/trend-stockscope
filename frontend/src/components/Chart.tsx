@@ -522,7 +522,6 @@ function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef }: {
           seriesRef.current.push(s)
         } catch { /* 跳过异常笔 */ }
       }
-      }
     }
 
     // 中枢上下沿 (水平虚线)
