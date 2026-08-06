@@ -432,7 +432,11 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, b
     // 每批不超过 10 个，多批用多个额外 series 添加（任意数量信号都能显示）
     // 先清理上次的额外 series
     extraSeriesRef.current.forEach(s => {
-      try { chartRef.current?.removeSeries(s) } catch { /* already removed */ }
+      try {
+        s.setMarkers([])
+        s.setData([])
+        chartRef.current?.removeSeries(s)
+      } catch { /* already removed */ }
     })
     extraSeriesRef.current = []
     if (markers.length) {
@@ -486,7 +490,14 @@ function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef }: {
 
   useEffect(() => {
     // 清理旧的
-    seriesRef.current.forEach(s => { try { chartRef.current?.removeSeries(s) } catch { /* noop */ } })
+    seriesRef.current.forEach(s => {
+      try {
+        // 先清空数据+markers再remove — 否则TradingView异步rAF绘制旧数据会抛Value is null
+        s.setMarkers([])
+        s.setData([])
+        chartRef.current?.removeSeries(s)
+      } catch { /* noop */ }
+    })
     seriesRef.current = []
     priceLinesRef.current.forEach(pl => { try { candleSeriesRef.current?.removePriceLine(pl) } catch { /* noop */ } })
     priceLinesRef.current = []
