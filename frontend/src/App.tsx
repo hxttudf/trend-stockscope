@@ -67,10 +67,10 @@ function clearMAs(refs: HTMLSpanElement[]) {
 }
 
 // 图表错误边界: 渲染崩溃时显示错误提示(避免整个页面黑屏)
-class ChartErrorBoundary extends Component<{ children: ReactNode }, { error: string | null }> {
-  state = { error: null as string | null }
+class ChartErrorBoundary extends Component<{ children: ReactNode }, { error: string | null; stack: string }> {
+  state = { error: null as string | null, stack: '' }
   static getDerivedStateFromError(err: any) {
-    return { error: String((err && err.message) || err) }
+    return { error: String((err && err.message) || err), stack: String((err && err.stack) || '') }
   }
   componentDidCatch(err: any, info: any) {
     console.error('[Chart崩溃]', err, info)
@@ -81,7 +81,12 @@ class ChartErrorBoundary extends Component<{ children: ReactNode }, { error: str
         <div style={{ padding: 24, color: '#f85149', fontFamily: 'monospace', fontSize: 13 }}>
           <b>图表渲染失败</b>
           <div style={{ marginTop: 8, whiteSpace: 'pre-wrap' }}>{this.state.error}</div>
-          <button onClick={() => this.setState({ error: null })} style={{ marginTop: 12, padding: '6px 14px', cursor: 'pointer' }}>重试</button>
+          {this.state.stack && (
+            <details style={{ marginTop: 8 }}><summary>错误堆栈(发给开发者)</summary>
+              <pre style={{ whiteSpace: 'pre-wrap', fontSize: 11, color: '#999', maxHeight: 200, overflow: 'auto' }}>{this.state.stack}</pre>
+            </details>
+          )}
+          <button onClick={() => this.setState({ error: null, stack: '' })} style={{ marginTop: 12, padding: '6px 14px', cursor: 'pointer' }}>重试</button>
         </div>
       )
     }
@@ -118,6 +123,7 @@ export default function App() {
   const [measureMode, setMeasureMode] = useState(false)
   const [chanlunMode, setChanlunMode] = useState(true)  // 默认选中缠(笔/中枢/买卖点)
   const [chanlunData, setChanlunData] = useState<any>(null)
+  const loadSeq = useRef(0)  // 请求序号: 防快速切股竞态(旧响应覆盖新)
   const [benchmarkIdx, setBenchmarkIdx] = useState<number | null>(null)
   const [focusDate, setFocusDate] = useState<string | null>(null)  // 选股跳转时聚焦的日期
 
@@ -254,7 +260,9 @@ export default function App() {
     setSearchQuery('')
     setShowSearch(false)
     setBenchmarkIdx(null)  // 切股票清基准
+    const seq = ++loadSeq.current
     const data = await getKline(symbol, qfq, 1000)
+    if (seq !== loadSeq.current) return  // 已被更新的切股请求覆盖
     setKline(data)
     setSignals(data.signals)
     // 有指定信号日期则跳转到该日期，否则定位最新K线(不跳选股信号日期—选股信号可能很旧)
@@ -265,7 +273,9 @@ export default function App() {
   useEffect(() => {
     if (currentStock) {
       const s = currentStock
+      const seq = ++loadSeq.current
       getKline(s.symbol, qfq, 1000).then(data => {
+        if (seq !== loadSeq.current) return
         setKline(data)
         setSignals(data.signals)
         // qfq切换保持当前focusDate不变(不跳选股信号日期)
@@ -276,10 +286,11 @@ export default function App() {
   // Load chanlun data when mode enabled or stock changes
   useEffect(() => {
     if (chanlunMode && currentStock) {
+      const seq = ++loadSeq.current
       fetch(`/stockscope/api/chanlun/${currentStock.symbol}`)
         .then(r => r.json())
-        .then(d => setChanlunData(d))
-        .catch(() => setChanlunData(null))
+        .then(d => { if (seq === loadSeq.current) setChanlunData(d) })
+        .catch(() => { if (seq === loadSeq.current) setChanlunData(null) })
     } else {
       setChanlunData(null)
     }
