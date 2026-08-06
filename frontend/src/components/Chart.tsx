@@ -337,12 +337,12 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, b
       return result
     }
 
-    candleSeriesRef.current.setData(candleData)
-    volumeSeriesRef.current.setData(volData)
-    ma5Ref.current?.setData(calcMA(5))
-    ma10Ref.current?.setData(calcMA(10))
-    ma20Ref.current?.setData(calcMA(20))
-    ma60Ref.current?.setData(calcMA(60))
+    try { candleSeriesRef.current.setData(candleData) } catch (e) { console.warn('[K线setData跳过]', e) }
+    try { volumeSeriesRef.current.setData(volData) } catch (e) { console.warn('[量setData跳过]', e) }
+    try { ma5Ref.current?.setData(calcMA(5)) } catch (e) { console.warn('[MA5跳过]', e) }
+    try { ma10Ref.current?.setData(calcMA(10)) } catch (e) { console.warn('[MA10跳过]', e) }
+    try { ma20Ref.current?.setData(calcMA(20)) } catch (e) { console.warn('[MA20跳过]', e) }
+    try { ma60Ref.current?.setData(calcMA(60)) } catch (e) { console.warn('[MA60跳过]', e) }
 
     // MACD (12, 26, 9)
     const emaArr = (data: number[], period: number): number[] => {
@@ -373,9 +373,9 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, b
       macdDifData.push({ time: t, value: dif[i] })
       macdDeaData.push({ time: t, value: dea[i] })
     }
-    macdHistRef.current?.setData(macdHistData)
-    macdDifRef.current?.setData(macdDifData)
-    macdDeaRef.current?.setData(macdDeaData)
+    try { macdHistRef.current?.setData(macdHistData) } catch (e) { console.warn('[MACD跳过]', e) }
+    try { macdDifRef.current?.setData(macdDifData) } catch (e) { console.warn('[MACD-DIF跳过]', e) }
+    try { macdDeaRef.current?.setData(macdDeaData) } catch (e) { console.warn('[MACD-DEA跳过]', e) }
 
     // Build signal markers
     const signalConfig: Record<string, { color: string; shape: 'arrowUp' | 'arrowDown' | 'square' | 'circle'; position: 'aboveBar' | 'belowBar'; label: string }> = {
