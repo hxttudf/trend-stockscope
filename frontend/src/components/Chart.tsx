@@ -450,8 +450,11 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, b
         const sigData: { time: Time; value: number }[] = []
         for (const m of batch) {
           if (!m.time) continue
-          const idx = kline.findIndex(k => k.time === String(m.time))
-          sigData.push({ time: m.time, value: idx >= 0 ? kline[idx].close : 0 })
+          // 关键: bdStr(对象time)转回 'YYYY-MM-DD' 才能匹配kline.time(字符串)
+          // 之前 String(m.time) = '[object Object]' → 匹配失败 → value=0 → 价格轴拉到0压扁K线
+          const idx = kline.findIndex(k => k.time === bdStr(m.time as Time))
+          if (idx < 0) continue  // 找不到对应K线则跳过(避免value=0污染价格轴)
+          sigData.push({ time: m.time, value: kline[idx].close })
         }
         if (sigData.length) {
           try { sigSeries.setData(sigData) } catch (e) { console.warn('[选股series跳过]', e) }
