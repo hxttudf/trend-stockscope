@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef , Component } from 'react'
 import Chart, { CrosshairInfo } from './components/Chart'
 import {
   KlineData, KlinePoint, Signal, PickRecord, WatchlistItem,
@@ -66,7 +66,31 @@ function clearMAs(refs: HTMLSpanElement[]) {
   for (const r of refs) { if (r) r.textContent = '--' }
 }
 
-export default function App() {
+export default 
+// 图表错误边界: 渲染崩溃时显示错误提示(避免整个页面黑屏)
+class ChartErrorBoundary extends Component<{ children: React.ReactNode }, { error: string | null }> {
+  state = { error: null as string | null }
+  static getDerivedStateFromError(err: any) {
+    return { error: String((err && err.message) || err) }
+  }
+  componentDidCatch(err: any, info: any) {
+    console.error('[Chart崩溃]', err, info)
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ padding: 24, color: '#f85149', fontFamily: 'monospace', fontSize: 13 }}>
+          <b>图表渲染失败</b>
+          <div style={{ marginTop: 8, whiteSpace: 'pre-wrap' }}>{this.state.error}</div>
+          <button onClick={() => this.setState({ error: null })} style={{ marginTop: 12, padding: '6px 14px', cursor: 'pointer' }}>重试</button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
+
+function App() {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<StockInfo[]>([])
   const [showSearch, setShowSearch] = useState(false)
@@ -609,6 +633,7 @@ export default function App() {
         {/* Chart */}
         <div className="chart-area">
           <div className="chart-container">
+            <ChartErrorBoundary>
             <Chart
               kline={kline?.kline ?? []}
               signals={kline?.signals ?? []}
@@ -620,6 +645,7 @@ export default function App() {
               focusDate={focusDate}
               chanlun={chanlunMode ? chanlunData : null}
             />
+            </ChartErrorBoundary>
             {(!currentStock || !kline) && (
               <div style={{
                 position: 'absolute', inset: 0,
