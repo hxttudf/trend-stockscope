@@ -341,11 +341,14 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, b
             from: candleData[Math.max(0, fi - 80)].time,
             to: candleData[Math.min(candleData.length - 1, fi + 80)].time,
           })
+        } else {
+          // focusDate找不到(数据范围外)则定位最新
+          chartRef.current?.timeScale().scrollToRealTime()
         }
       } else {
         chartRef.current?.timeScale().scrollToRealTime()
       }
-    }, 150)
+    }, 400)
 
     // MACD (12, 26, 9)
     const emaArr = (data: number[], period: number): number[] => {
