@@ -332,6 +332,21 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, b
     ma20Ref.current?.setData(calcMA(20))
     ma60Ref.current?.setData(calcMA(60))
 
+    // K线数据设置后延迟定位(等TradingView布局完成): 有focusDate跳指定日期, 否则定位最新
+    setTimeout(() => {
+      if (focusDate) {
+        const fi = candleData.findIndex(d => String(d.time) === focusDate)
+        if (fi >= 0) {
+          chartRef.current?.timeScale().setVisibleRange({
+            from: candleData[Math.max(0, fi - 80)].time,
+            to: candleData[Math.min(candleData.length - 1, fi + 80)].time,
+          })
+        }
+      } else {
+        chartRef.current?.timeScale().scrollToRealTime()
+      }
+    }, 150)
+
     // MACD (12, 26, 9)
     const emaArr = (data: number[], period: number): number[] => {
       const k = 2 / (period + 1)
