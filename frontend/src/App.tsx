@@ -66,7 +66,6 @@ function clearMAs(refs: HTMLSpanElement[]) {
   for (const r of refs) { if (r) r.textContent = '--' }
 }
 
-export default 
 // 图表错误边界: 渲染崩溃时显示错误提示(避免整个页面黑屏)
 class ChartErrorBoundary extends Component<{ children: ReactNode }, { error: string | null }> {
   state = { error: null as string | null }
@@ -90,7 +89,7 @@ class ChartErrorBoundary extends Component<{ children: ReactNode }, { error: str
   }
 }
 
-function App() {
+export default function App() {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<StockInfo[]>([])
   const [showSearch, setShowSearch] = useState(false)
