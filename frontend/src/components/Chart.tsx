@@ -394,7 +394,7 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, b
     for (const s of signals) {
       if (kline.findIndex(k => k.time === s.date) < 0) continue
       const cfg = signalConfig[s.type] || defaultCfg
-      markers.push({ time: toBD(s.date), position: cfg.position, color: cfg.color, shape: cfg.shape, text: cfg.label, size: 2 })
+      if (s.date) markers.push({ time: toBD(s.date), position: cfg.position, color: cfg.color, shape: cfg.shape, text: cfg.label, size: 2 })
     }
 
     // Benchmark marker
@@ -449,11 +449,14 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, b
         // LineSeries 需要有数据点，marker 才会渲染
         const sigData: { time: Time; value: number }[] = []
         for (const m of batch) {
+          if (!m.time) continue
           const idx = kline.findIndex(k => k.time === String(m.time))
           sigData.push({ time: m.time, value: idx >= 0 ? kline[idx].close : 0 })
         }
-        sigSeries.setData(sigData)
-        sigSeries.setMarkers(batch)
+        if (sigData.length) {
+          try { sigSeries.setData(sigData) } catch (e) { console.warn('[选股series跳过]', e) }
+          try { sigSeries.setMarkers(batch.filter(m => m && m.time != null)) } catch (e) { console.warn('[选股markers跳过]', e) }
+        }
       }
     }
   }, [kline, signals, symbol, range, focusDate, benchmarkTime])
@@ -562,7 +565,7 @@ function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef }: {
         if (idx < 0) return
         const c = cfg[bs.type] || { color: '#888', label: bs.type }
         const pos = bs.pos || (bs.type.includes('卖') ? 'aboveBar' : 'belowBar')
-        markers.push({
+        if (bs.time) markers.push({
           time: toBD(bs.time), position: pos, color: c.color,
           shape: pos === 'aboveBar' ? 'arrowDown' : 'arrowUp', text: c.label,
         })
@@ -573,8 +576,8 @@ function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef }: {
         try {
           // 按时间倒序(最近在前)
           markers.sort((a, b) => bdStr(a.time as Time) < bdStr(b.time as Time) ? 1 : -1)
-          candleSeriesRef.current?.setMarkers(markers.slice(0, 10))
-        } catch { /* noop */ }
+          candleSeriesRef.current?.setMarkers(markers.slice(0, 10).filter(m => m && m.time != null))
+        } catch (e) { console.warn('[买卖点markers跳过]', e) }
       }
     }
   }, [chanlun, kline, chartRef, candleSeriesRef])
