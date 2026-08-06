@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef , Component } from 'react'
+import { useState, useEffect, useCallback, useRef , Component , type ReactNode } from 'react'
 import Chart, { CrosshairInfo } from './components/Chart'
 import {
   KlineData, KlinePoint, Signal, PickRecord, WatchlistItem,
@@ -68,7 +68,7 @@ function clearMAs(refs: HTMLSpanElement[]) {
 
 export default 
 // 图表错误边界: 渲染崩溃时显示错误提示(避免整个页面黑屏)
-class ChartErrorBoundary extends Component<{ children: React.ReactNode }, { error: string | null }> {
+class ChartErrorBoundary extends Component<{ children: ReactNode }, { error: string | null }> {
   state = { error: null as string | null }
   static getDerivedStateFromError(err: any) {
     return { error: String((err && err.message) || err) }
