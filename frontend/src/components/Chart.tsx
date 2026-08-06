@@ -551,7 +551,9 @@ function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef }: {
         const biSeries = seriesRef.current[1]
         if (biSeries) {
           try {
-            biSeries.setMarkers(markers.slice(0, 10))
+            // 按时间倒序(最近在前), 画最近50个(避免历史信号挤占导致最新信号被截断)
+            markers.sort((a, b) => (a.time as string) < (b.time as string) ? 1 : -1)
+            biSeries.setMarkers(markers.slice(0, 50))
           } catch { /* noop */ }
         }
       }
