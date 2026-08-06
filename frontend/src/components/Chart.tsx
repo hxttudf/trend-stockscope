@@ -55,6 +55,17 @@ const COLORS = {
 }
 
 const KLINE_CACHE = { data: [] as KlinePoint[] }
+// 字符串日期 <-> TradingView BusinessDay 对象(避免字符串time解析歧义)
+const toBD = (s: string): Time => {
+  const [y, m, d] = s.split("-").map(Number)
+  return { year: y, month: m, day: d } as Time
+}
+const bdStr = (t: Time | string): string => {
+  if (typeof t === "string") return t as string
+  const o = t as { year: number; month: number; day: number }
+  return `${o.year}-${String(o.month).padStart(2, "0")}-${String(o.day).padStart(2, "0")}`
+}
+
 
 export default memo(Chart)
 
@@ -99,7 +110,7 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, b
     }
     const data = param.seriesData.get(candleSeriesRef.current) as CandlestickData | undefined
     if (data && KLINE_CACHE.data.length > 0) {
-      const timeStr = String(data.time)
+      const timeStr = bdStr(data.time as Time)
       const idx = KLINE_CACHE.data.findIndex(k => k.time === timeStr)
       const prevClose = idx > 0 ? KLINE_CACHE.data[idx - 1].close : data.close
       cb?.({
@@ -151,7 +162,7 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, b
         timeVisible: false,
         secondsVisible: false,
         tickMarkFormatter: (time: Time) => {
-          const d = typeof time === 'string' ? time : String(time)
+          const d = bdStr(time as Time)
           return d.slice(5)
         },
       },
@@ -243,7 +254,7 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, b
           borderColor: COLORS.grid,
           visible: false, // 副图不显示时间轴(共用主图)
           tickMarkFormatter: (time: Time) => {
-            const d = typeof time === 'string' ? time : String(time)
+            const d = bdStr(time as Time)
             return d.slice(5)
           },
         },
@@ -301,7 +312,7 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, b
     KLINE_CACHE.data = kline
 
     const candleData: CandlestickData[] = kline.map(k => ({
-      time: k.time as Time,
+      time: toBD(k.time),
       open: k.open,
       high: k.high,
       low: k.low,
@@ -309,7 +320,7 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, b
     }))
 
     const volData: HistogramData[] = kline.map(k => ({
-      time: k.time as Time,
+      time: toBD(k.time),
       value: k.volume,
       color: k.close >= k.open ? COLORS.volUp : COLORS.volDown,
     }))
@@ -320,7 +331,7 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, b
       for (let i = period - 1; i < closes.length; i++) {
         let sum = 0
         for (let j = i - period + 1; j <= i; j++) sum += closes[j]
-        result.push({ time: kline[i].time as Time, value: sum / period })
+        result.push({ time: toBD(kline[i].time), value: sum / period })
       }
       return result
     }
@@ -335,7 +346,7 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, b
     // K线数据设置后延迟定位(等TradingView布局完成): 有focusDate跳指定日期, 否则定位最新
     setTimeout(() => {
       if (focusDate) {
-        const fi = candleData.findIndex(d => String(d.time) === focusDate)
+        const fi = candleData.findIndex(d => bdStr(d.time) === focusDate)
         if (fi >= 0) {
           chartRef.current?.timeScale().setVisibleRange({
             from: candleData[Math.max(0, fi - 80)].time,
@@ -357,7 +368,24 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, b
           to: candleData[candleData.length - 1].time,
         })
       }
-    }, 400)
+    }, 300)
+    setTimeout(() => {
+      if (focusDate) {
+        const fi = candleData.findIndex(d => bdStr(d.time) === focusDate)
+        if (fi >= 0) {
+          chartRef.current?.timeScale().setVisibleRange({
+            from: candleData[Math.max(0, fi - 80)].time,
+            to: candleData[Math.min(candleData.length - 1, fi + 80)].time,
+          })
+        }
+      } else {
+        const vr = Math.min(range, candleData.length)
+        if (vr > 0) chartRef.current?.timeScale().setVisibleRange({
+          from: candleData[candleData.length - vr].time,
+          to: candleData[candleData.length - 1].time,
+        })
+      }
+    }, 1500)
 
     // MACD (12, 26, 9)
     const emaArr = (data: number[], period: number): number[] => {
@@ -381,7 +409,7 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, b
     const macdDifData: LineData[] = []
     const macdDeaData: LineData[] = []
     for (let i = 0; i < kline.length; i++) {
-      const t = kline[i].time as Time
+      const t = toBD(kline[i].time)
       const hv = hist[i]
       if (!isFinite(hv)) continue
       macdHistData.push({ time: t, value: hv, color: hv >= 0 ? 'rgba(240,101,101,0.7)' : 'rgba(80,180,120,0.7)' })
@@ -409,20 +437,20 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, b
     for (const s of signals) {
       if (kline.findIndex(k => k.time === s.date) < 0) continue
       const cfg = signalConfig[s.type] || defaultCfg
-      markers.push({ time: s.date as Time, position: cfg.position, color: cfg.color, shape: cfg.shape, text: cfg.label, size: 2 })
+      markers.push({ time: toBD(s.date), position: cfg.position, color: cfg.color, shape: cfg.shape, text: cfg.label, size: 2 })
     }
 
     // Benchmark marker
     if (benchmarkTime) {
       const idx = kline.findIndex(k => k.time === benchmarkTime)
       if (idx >= 0) {
-        markers.push({ time: benchmarkTime as Time, position: 'belowBar', color: '#f0883e', shape: 'circle', text: '基准', size: 2 })
+        markers.push({ time: toBD(benchmarkTime), position: 'belowBar', color: '#f0883e', shape: 'circle', text: '基准', size: 2 })
       }
     }
 
     // Step 1: 先设可见范围（缩放）
     if (focusDate) {
-      const focusIdx = candleData.findIndex(d => String(d.time) === focusDate)
+      const focusIdx = candleData.findIndex(d => bdStr(d.time) === focusDate)
       if (focusIdx >= 0) {
         const hr = 80
         chartRef.current?.timeScale().setVisibleRange({ from: candleData[Math.max(0, focusIdx - hr)].time, to: candleData[Math.min(candleData.length - 1, focusIdx + hr)].time })
@@ -501,7 +529,7 @@ function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef }: {
     if (chanlun.segs?.length) {
       const segData: LineData[] = chanlun.segs
         .filter(s => validTimes.has(s.time))
-        .map(s => ({ time: s.time as Time, value: s.price }))
+        .map(s => ({ time: toBD(s.time), value: s.price }))
       if (segData.length >= 2) {
         const s = chart.addLineSeries({
           color: '#f0d43a', lineWidth: 2, lastValueVisible: false, priceLineVisible: false,
@@ -515,7 +543,7 @@ function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef }: {
     if (chanlun.bi?.length) {
       const biData: LineData[] = chanlun.bi
         .filter(b => validTimes.has(b.time))
-        .map(b => ({ time: b.time as Time, value: b.price }))
+        .map(b => ({ time: toBD(b.time), value: b.price }))
       if (biData.length >= 2) {
         const s = chart.addLineSeries({
           color: 'rgba(160,160,170,0.55)', lineWidth: 1, lastValueVisible: false, priceLineVisible: false,
@@ -569,7 +597,7 @@ function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef }: {
         if (idx < 0) return
         const c = cfg[bs.type] || { color: '#888', label: bs.type }
         markers.push({
-          time: bs.time as Time, position: bs.pos, color: c.color,
+          time: toBD(bs.time), position: bs.pos, color: c.color,
           shape: bs.pos === 'aboveBar' ? 'arrowDown' : 'arrowUp', text: c.label,
         })
       })
