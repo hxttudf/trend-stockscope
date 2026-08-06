@@ -377,6 +377,29 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, b
     try { macdDifRef.current?.setData(macdDifData) } catch (e) { console.warn('[MACD-DIF跳过]', e) }
     try { macdDeaRef.current?.setData(macdDeaData) } catch (e) { console.warn('[MACD-DEA跳过]', e) }
 
+    // 定位/range切换: 立即执行 + 800ms debounce重试(布局完成后最终生效, 不闪烁)
+    const doLocate = () => {
+      if (!chartRef.current) return
+      if (focusDate) {
+        const focusIdx = candleData.findIndex(d => bdStr(d.time) === focusDate)
+        if (focusIdx >= 0) {
+          chartRef.current.timeScale().setVisibleRange({ from: candleData[Math.max(0, focusIdx - 80)].time, to: candleData[Math.min(candleData.length - 1, focusIdx + 80)].time })
+        } else {
+          const n = Math.min(120, candleData.length)
+          chartRef.current.timeScale().setVisibleRange({ from: candleData[candleData.length - n].time, to: candleData[candleData.length - 1].time })
+        }
+      } else {
+        const vr = Math.min(range, candleData.length)
+        if (vr > 0) chartRef.current.timeScale().setVisibleRange({ from: candleData[candleData.length - vr].time, to: candleData[candleData.length - 1].time })
+      }
+    }
+    doLocate()
+    if (locateTimer.current) clearTimeout(locateTimer.current)
+    locateTimer.current = window.setTimeout(doLocate, 800)
+    // 同步MACD副图时间轴
+    const syncRange = chartRef.current?.timeScale().getVisibleLogicalRange()
+    if (syncRange) macdChartRef.current?.timeScale().setVisibleLogicalRange(syncRange)
+
   }, [kline, signals, symbol, range, focusDate, benchmarkTime])
 
   return (
