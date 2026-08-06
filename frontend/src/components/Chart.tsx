@@ -561,21 +561,20 @@ function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef }: {
         const idx = kline.findIndex(k => k.time === bs.time)
         if (idx < 0) return
         const c = cfg[bs.type] || { color: '#888', label: bs.type }
+        const pos = bs.pos || (bs.type.includes('卖') ? 'aboveBar' : 'belowBar')
         markers.push({
-          time: toBD(bs.time), position: bs.pos, color: c.color,
-          shape: bs.pos === 'aboveBar' ? 'arrowDown' : 'arrowUp', text: c.label,
+          time: toBD(bs.time), position: pos, color: c.color,
+          shape: pos === 'aboveBar' ? 'arrowDown' : 'arrowUp', text: c.label,
         })
       })
       if (markers.length) {
-        // 挂到笔折线series上(第2个, 包含所有笔端点; 买卖点必是笔端点)
-        const biSeries = seriesRef.current[1]
-        if (biSeries) {
-          try {
-            // 按时间倒序(最近在前), 画全部信号(不截断)
-            markers.sort((a, b) => (a.time as string) < (b.time as string) ? 1 : -1)
-            biSeries.setMarkers(markers)
-          } catch { /* noop */ }
-        }
+        // 挂到主K线series上(有全部K线数据点, marker按time精确对齐, 不会错位)
+        // 注意: 不能挂笔折线series(只有笔端点, 非端点的信号会错位到最近端点)
+        try {
+          // 按时间倒序(最近在前)
+          markers.sort((a, b) => bdStr(a.time as Time) < bdStr(b.time as Time) ? 1 : -1)
+          candleSeriesRef.current?.setMarkers(markers.slice(0, 10))
+        } catch { /* noop */ }
       }
     }
   }, [chanlun, kline, chartRef, candleSeriesRef])
