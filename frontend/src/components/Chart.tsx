@@ -2,87 +2,6 @@ import { useEffect, useRef, useCallback, memo, useState } from 'react'
 import { createChart, IChartApi, ISeriesApi, CandlestickData, LineData, HistogramData, Time, SeriesAttachedParameter, ISeriesPrimitive, PrimitivePaneViewZOrder, CandlestickSeries, LineSeries, HistogramSeries, createSeriesMarkers } from 'lightweight-charts'
 import { KlinePoint, Signal } from '../utils/api'
 
-// ═══ 中枢文本框 primitive: zOrder=bottom → 画在K线数据之下(图层置底, K线/均线优先显示) ═══
-class ZsLabelPrimitive implements ISeriesPrimitive<Time> {
-  private _series: ISeriesApi<'Candlestick'> | null = null
-  private _requestUpdate: (() => void) | null = null
-  private _zg = 0
-  private _zd = 0
-  private _zgText = ''
-  private _zdText = ''
-  update(zg: number, zd: number, zgText: string, zdText: string) {
-    this._zg = zg; this._zd = zd; this._zgText = zgText; this._zdText = zdText
-    this._requestUpdate?.()
-  }
-  clear() {
-    this._zgText = ''; this._zdText = ''
-    this._requestUpdate?.()
-  }
-  attached(param: SeriesAttachedParameter<Time>) {
-    this._series = param.series as ISeriesApi<'Candlestick'>
-    this._requestUpdate = param.requestUpdate
-  }
-  detached() {
-    this._series = null
-    this._requestUpdate = null
-  }
-  paneViews() {
-    const self = this
-    return [{
-      zOrder: (): PrimitivePaneViewZOrder => 'bottom',
-      renderer: () => ({
-        draw: (target: any) => self._draw(target),
-      }),
-    }]
-  }
-  private _draw(target: any) {
-    try {
-      this._drawImpl(target)
-    } catch (e) { console.warn('[中枢文本框绘制异常]', e) }
-  }
-  private _drawImpl(target: any) {
-    const s = this._series
-    if (!s || !this._zgText) return
-    // 4.2.3/5.2.0 的 PriceScaleApi 均无 priceToCoordinate(typing超前), 用 getVisibleRange+scaleMargins 手动映射
-    const ps = s.priceScale() as any
-    const vr = ps.getVisibleRange ? ps.getVisibleRange() : null
-    const opts = ps.options ? ps.options() : null
-    if (!vr || !opts?.scaleMargins) return
-    const from = vr.from
-    const to = vr.to
-    if (from == null || to == null || to <= from) return
-    target.useMediaCoordinateSpace((scope: any) => {
-      const ctx = scope.context
-      const w = scope.mediaSize.width
-      const h = scope.mediaSize.height
-      const mTop = opts.scaleMargins.top ?? 0.05
-      const mBot = opts.scaleMargins.bottom ?? 0.25
-      const plotTop = h * mTop
-      const plotBot = h * (1 - mBot)
-      const yFor = (price: number) => plotTop + (price - from) / (to - from) * (plotBot - plotTop)
-      const yg = yFor(this._zg)
-      const yd = yFor(this._zd)
-      const drawLabel = (y: number, text: string, bg: string) => {
-        if (y < 0 || y > h) return
-        ctx.font = '11px -apple-system, "PingFang SC", sans-serif'
-        const tw = ctx.measureText(text).width
-        const pad = 6, bh = 18
-        const x = w - tw - pad * 2 - 10
-        ctx.fillStyle = bg
-        ctx.beginPath()
-        if (typeof ctx.roundRect === 'function') ctx.roundRect(x, y - bh / 2, tw + pad * 2, bh, 4)
-        else ctx.rect(x, y - bh / 2, tw + pad * 2, bh)
-        ctx.fill()
-        ctx.fillStyle = 'rgba(255,255,255,0.92)'
-        ctx.textBaseline = 'middle'
-        ctx.fillText(text, x + pad, y)
-      }
-      drawLabel(yg, this._zgText, 'rgba(240,101,101,0.25)')
-      drawLabel(yd, this._zdText, 'rgba(80,180,120,0.25)')
-    })
-  }
-}
-
 export interface CrosshairInfo {
   time: string
   open: number
@@ -181,8 +100,6 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, b
   const extraSeriesRef = useRef<ISeriesApi<'Line'>[]>([])
   const chanSeriesRef = useRef<ISeriesApi<'Line'>[]>([])
   const chanPriceLinesRef = useRef<ReturnType<ISeriesApi<'Candlestick'>['createPriceLine']>[]>([])
-  const zsUnderRef = useRef<(ISeriesApi<'Line'> | null)[]>([])  // 中枢置底线(先于K线创建=底层)
-  const zsLabelPrimRef = useRef<ZsLabelPrimitive | null>(null)  // 中枢文本框primitive(bottom zOrder)
   // 用ref存最新onCrosshairMove，避免闭包捕获旧值
   const onCrosshairMoveRef = useRef(onCrosshairMove)
   onCrosshairMoveRef.current = onCrosshairMove
@@ -263,22 +180,6 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, b
       }, // 禁用触摸缩放
     })
 
-    // ═══ 中枢置底线: 必须在K线之前创建(series层级=创建顺序, 先创建=底层) ═══
-    const zsUnderUp = chart.addSeries(LineSeries, {
-      color: 'rgba(240,101,101,0.5)', lineWidth: 2, lineStyle: 2,
-      lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false,
-      priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
-    })
-    const zsUnderDown = chart.addSeries(LineSeries, {
-      color: 'rgba(80,180,120,0.5)', lineWidth: 2, lineStyle: 2,
-      lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false,
-      priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
-    })
-    zsUnderRef.current = [zsUnderUp, zsUnderDown]
-    // 中枢文本框primitive(zOrder bottom: 画在K线数据之下)
-    const zsLabelPrim = new ZsLabelPrimitive()
-    zsLabelPrimRef.current = zsLabelPrim
-
     const candleSeries = chart.addSeries(CandlestickSeries, {
       upColor: COLORS.red,
       downColor: COLORS.green,
@@ -323,9 +224,6 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, b
       pointMarkersVisible: true,
       priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
     })
-
-    // 挂载中枢文本框primitive到主K线series(bottom zOrder)
-    try { candleSeries.attachPrimitive(zsLabelPrim) } catch (e) { console.warn('[中枢primitive挂载跳过]', e) }
 
     chart.subscribeCrosshairMove(handleCrosshair)
 
@@ -404,9 +302,6 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, b
     return () => {
       el?.removeEventListener('click', handleContainerClick)
       observer.disconnect()
-      // 中枢置底线 + primitive清理
-      try { zsLabelPrimRef.current?.clear(); candleSeries.detachPrimitive(zsLabelPrim) } catch { /* ignore */ }
-      zsUnderRef.current = []
       chart.remove()
       macdChart?.remove()
       macdChartRef.current = null
@@ -515,13 +410,13 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, b
     <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
       <div ref={containerRef} style={{ width: '100%', flex: 1, minHeight: 0, touchAction: 'manipulation' }} />
       <div ref={macdContainerRef} style={{ width: '100%', height: 120, flexShrink: 0, borderTop: '1px solid var(--border, #30363d)' }} />
-      {chartReady && chanOverlayReady && <ChanlunOverlay chanlun={chanlun ?? null} kline={kline} chartRef={chartRef} candleSeriesRef={candleSeriesRef} zsAsOf={zsAsOf ?? null} onZsRangeChange={onZsRangeChange} showAllZs={showAllZs ?? false} zsUnderRef={zsUnderRef} zsLabelPrimRef={zsLabelPrimRef} />}
+      {chartReady && chanOverlayReady && <ChanlunOverlay chanlun={chanlun ?? null} kline={kline} chartRef={chartRef} candleSeriesRef={candleSeriesRef} zsAsOf={zsAsOf ?? null} onZsRangeChange={onZsRangeChange} showAllZs={showAllZs ?? false} />}
     </div>
   )
 }
 
 // ═══ 缠论绘制(完整版): 线段折线 + 笔 + 中枢线 + 买卖点标记 ═══
-function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef, zsAsOf, onZsRangeChange, showAllZs, zsUnderRef, zsLabelPrimRef }: {
+function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef, zsAsOf, onZsRangeChange, showAllZs }: {
   chanlun: ChanlunData | null
   kline: KlinePoint[]
   chartRef: React.RefObject<IChartApi | null>
@@ -529,8 +424,6 @@ function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef, zsAsOf, onZ
   zsAsOf?: { date: string; zd: number; zg: number; ext: number; since?: string } | null
   onZsRangeChange?: (date: string) => void
   showAllZs?: boolean
-  zsUnderRef: React.RefObject<(ISeriesApi<'Line'> | null)[]>
-  zsLabelPrimRef: React.RefObject<ZsLabelPrimitive | null>
 }) {
   const seriesRef = useRef<ISeriesApi<'Line'>[]>([])
   const priceLinesRef = useRef<ReturnType<ISeriesApi<'Candlestick'>['createPriceLine']>[]>([])
@@ -666,26 +559,21 @@ function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef, zsAsOf, onZ
       }
     }
 
-    // 中枢上下沿: 置底线(先于K线创建的series=底层图层) + primitive文本框(zOrder bottom)
-    // 优先动态中枢(zsAsOf=视角历史时回放的当时中枢), 否则最新中枢
+    // 中枢上下沿 (水平虚线+价格轴标签): 优先动态中枢(zsAsOf=视角历史时回放的当时中枢), 否则最新中枢
     const zs = zsAsOf && zsAsOf.zd > 0 && zsAsOf.zg > zsAsOf.zd ? zsAsOf : chanlun.last_zhongshu
     if (zs && zs.zg > zs.zd) {
       const tag = zsAsOf ? `截至${zsAsOf.date}` : '最新'
-      // 置底线: 贯穿全图(首→尾K线), 图层在K线/均线下方
-      const tFirst = kline.length ? toBD(kline[0].time) : null
-      const tLast = kline.length ? toBD(kline[kline.length - 1].time) : null
-      if (tFirst && tLast) {
-        try {
-          zsUnderRef.current?.[0]?.setData([{ time: tFirst, value: zs.zg }, { time: tLast, value: zs.zg }])
-          zsUnderRef.current?.[1]?.setData([{ time: tFirst, value: zs.zd }, { time: tLast, value: zs.zd }])
-        } catch (e) { console.warn('[中枢置底线跳过]', e) }
-      }
-      // 文本框primitive(bottom图层): 与K线同一图层栈但画在数据之下
       try {
-        zsLabelPrimRef.current?.update(zs.zg, zs.zd, `中枢上 ${tag}(${zs.ext}段)`, '中枢下')
-      } catch (e) { console.warn('[中枢文本框跳过]', e) }
-    } else {
-      try { zsLabelPrimRef.current?.clear() } catch { /* ignore */ }
+        const pl1 = candle.createPriceLine({
+          price: zs.zg, color: 'rgba(240,101,101,0.30)',
+          lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: `中枢上 ${tag}(${zs.ext}段)`,
+        })
+        const pl2 = candle.createPriceLine({
+          price: zs.zd, color: 'rgba(80,180,120,0.30)',
+          lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: '中枢下',
+        })
+        priceLinesRef.current = [pl1, pl2]
+      } catch (e) { console.warn('[中枢线跳过]', e) }
     }
 
     // 买卖点标记: 完整演化链(chain) + 窗口内最新节点(buy_sell), 去重后全画
