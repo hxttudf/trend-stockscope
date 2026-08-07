@@ -502,9 +502,10 @@ function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef, zsAsOf, onZ
       }
     }
 
-    // 全部历史中枢矩形(开关): 每个中枢独立上下边线段(不依赖null断开, 杜绝折线粘连)
-    // 上边=红(zg) 下边=绿(zd), 覆盖[start,end]区间; 单日中枢退化为点, 跳过
+    // 全部历史中枢矩形(开关): 每中枢 上边+下边 青色虚线(lineWidth2) + 四角标记
+    // 4.x限制: 同一series不允许同一天两点(画不了竖线), 用角点markers补足矩形感
     if (showAllZs && chanlun.zhongshu_list?.length) {
+      const zsColor = 'rgba(57,197,207,0.9)'
       for (const z of chanlun.zhongshu_list) {
         if (!z.start || !z.end || z.start === z.end) continue
         const t1 = toBD(z.start)
@@ -512,13 +513,13 @@ function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef, zsAsOf, onZ
         if (!t1 || !t2 || bdStr(t1 as Time) > bdStr(t2 as Time)) continue
         try {
           const up = chart.addLineSeries({
-            color: 'rgba(240,101,101,0.85)', lineWidth: 1, lineStyle: 0,
+            color: zsColor, lineWidth: 2, lineStyle: 2,
             lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false,
           })
           up.setData([{ time: t1, value: z.zg }, { time: t2, value: z.zg }])
           seriesRef.current.push(up)
           const down = chart.addLineSeries({
-            color: 'rgba(80,180,120,0.85)', lineWidth: 1, lineStyle: 0,
+            color: zsColor, lineWidth: 2, lineStyle: 2,
             lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false,
           })
           down.setData([{ time: t1, value: z.zd }, { time: t2, value: z.zd }])
