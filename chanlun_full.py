@@ -225,6 +225,21 @@ def last_zhongshu_effective(bi, merged, zs_list):
 
 
 # ═══ 第6层: 走势类型 (趋势/盘整) ═══
+def zhongshu_history(bi, merged, zs_list):
+    """全部已确认中枢 → [{start, end, zd, zg, ext}]
+    start=中枢确认日(第4笔d笔端点), end=最后一笔延伸笔端点(离开段前)"""
+    out = []
+    for z in zs_list:
+        bs, be = z["bi_start"], z["bi_end"]
+        i4 = bs + 3
+        start = merged[bi[i4][0]][0] if i4 < len(bi) else merged[bi[bs][0]][0]
+        end = merged[bi[be][0]][0] if be < len(bi) else merged[bi[bs][0]][0]
+        if start and end and end >= start:
+            out.append({"start": start, "end": end,
+                        "zd": round(z["zd"], 2), "zg": round(z["zg"], 2), "ext": z["ext"]})
+    return out
+
+
 def trend_type(zs_list):
     """用中枢序列判断走势: 上涨趋势(中枢依次抬高不重叠) / 下跌趋势 / 盘整"""
     if len(zs_list) < 2:
@@ -520,6 +535,7 @@ def analyze(symbol, window_days=7, as_of=None, light=False):
         "bi_cnt": len(bi), "seg_cnt": len(segs), "zs_cnt": len(zs_list),
         "trend": trend,
         "last_zhongshu": last_zhongshu_effective(bi, merged, zs_list),
+        "zhongshu_list": zhongshu_history(bi, merged, zs_list),
         "buy_sell": [{"time": x[1], "type": x[0], "price": x[2]} for x in buy_sell],
         "chain": [{"time": x[1], "type": x[0], "price": x[2]} for x in chain],
         "sell_chain": [{"time": x[1], "type": x[0], "price": x[2]} for x in sell_chain],

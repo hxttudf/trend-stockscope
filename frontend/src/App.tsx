@@ -122,6 +122,7 @@ export default function App() {
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null)
   const [measureMode, setMeasureMode] = useState(false)
   const [chanlunMode, setChanlunMode] = useState(true)  // 默认选中缠(笔/中枢/买卖点)
+  const [showAllZs, setShowAllZs] = useState(false)  // 显示全部历史中枢(矩形框)
   const [chanlunData, setChanlunData] = useState<any>(null)
   const [zsAsOf, setZsAsOf] = useState<any>(null)  // 动态中枢: {date, zd, zg, ext, since} 视角历史时回放当时中枢
   const zsSeq = useRef(0)  // 动态中枢请求独立序号(防旧股票/旧日期响应覆盖)
@@ -588,6 +589,12 @@ export default function App() {
             style={{ fontSize: 11, padding: '2px 6px' }}>
             缠
           </button>
+          <button className={`toolbar-btn ${showAllZs ? 'active' : ''}`}
+            onClick={() => setShowAllZs(s => !s)}
+            style={{ fontSize: 11, padding: '2px 6px' }}
+            title="显示全部历史中枢(矩形框)">
+            枢
+          </button>
 
           <div className="range-group">
             {RANGES.map(r => (
@@ -676,6 +683,7 @@ export default function App() {
               chanlun={chanlunMode ? chanlunData : null}
               zsAsOf={zsAsOf}
               onZsRangeChange={loadZsAsOf}
+              showAllZs={showAllZs}
             />
             </ChartErrorBoundary>
             {(!currentStock || !kline) && (

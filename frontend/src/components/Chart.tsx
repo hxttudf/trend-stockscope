@@ -16,6 +16,7 @@ interface ChanlunData {
   bi: { time: string; type: string; price: number }[]
   segs: { time: string; type: string; price: number }[]
   last_zhongshu: { zd: number; zg: number; ext: number } | null
+  zhongshu_list?: { start: string; end: string; zd: number; zg: number; ext: number }[]  // 全部已确认中枢(矩形框用)
   trend: string
   buy_sell: { time: string; type: string; price: number }[]
   chain: { time: string; type: string; price: number }[]
@@ -36,6 +37,7 @@ interface ChartProps {
   chanlun?: ChanlunData | null
   zsAsOf?: { date: string; zd: number; zg: number; ext: number; since?: string } | null  // 动态中枢(视角历史时回放)
   onZsRangeChange?: (date: string) => void  // 视角最右日期变化(空串=回到最新)
+  showAllZs?: boolean  // 显示全部历史中枢(矩形框)
 }
 const COLORS = {
   bg: '#0d1117',
@@ -71,7 +73,7 @@ const bdStr = (t: Time | string): string => {
 
 export default memo(Chart)
 
-function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, benchmarkTime, focusDate, chanlun, zsAsOf, onZsRangeChange }: ChartProps) {
+function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, benchmarkTime, focusDate, chanlun, zsAsOf, onZsRangeChange, showAllZs }: ChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const macdContainerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
@@ -408,19 +410,20 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, b
     <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
       <div ref={containerRef} style={{ width: '100%', flex: 1, minHeight: 0, touchAction: 'manipulation' }} />
       <div ref={macdContainerRef} style={{ width: '100%', height: 120, flexShrink: 0, borderTop: '1px solid var(--border, #30363d)' }} />
-      {chartReady && chanOverlayReady && <ChanlunOverlay chanlun={chanlun ?? null} kline={kline} chartRef={chartRef} candleSeriesRef={candleSeriesRef} zsAsOf={zsAsOf ?? null} onZsRangeChange={onZsRangeChange} />}
+      {chartReady && chanOverlayReady && <ChanlunOverlay chanlun={chanlun ?? null} kline={kline} chartRef={chartRef} candleSeriesRef={candleSeriesRef} zsAsOf={zsAsOf ?? null} onZsRangeChange={onZsRangeChange} showAllZs={showAllZs ?? false} />}
     </div>
   )
 }
 
 // ═══ 缠论绘制(完整版): 线段折线 + 笔 + 中枢线 + 买卖点标记 ═══
-function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef, zsAsOf, onZsRangeChange }: {
+function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef, zsAsOf, onZsRangeChange, showAllZs }: {
   chanlun: ChanlunData | null
   kline: KlinePoint[]
   chartRef: React.RefObject<IChartApi | null>
   candleSeriesRef: React.RefObject<ISeriesApi<'Candlestick'> | null>
   zsAsOf?: { date: string; zd: number; zg: number; ext: number; since?: string } | null
   onZsRangeChange?: (date: string) => void
+  showAllZs?: boolean
 }) {
   const seriesRef = useRef<ISeriesApi<'Line'>[]>([])
   const priceLinesRef = useRef<ReturnType<ISeriesApi<'Candlestick'>['createPriceLine']>[]>([])
@@ -499,6 +502,40 @@ function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef, zsAsOf, onZ
       }
     }
 
+    // 全部历史中枢矩形(开关): 上边/下边两条线, 中枢间用null断开(透明矩形框)
+    if (showAllZs && chanlun.zhongshu_list?.length) {
+      const upData: LineData[] = []
+      const downData: LineData[] = []
+      for (const z of chanlun.zhongshu_list) {
+        const t1 = toBD(z.start)
+        const t2 = toBD(z.end)
+        if (t1 && t2 && bdStr(t1 as Time) <= bdStr(t2 as Time)) {
+          upData.push({ time: t1, value: z.zg })
+          if (z.start !== z.end) upData.push({ time: t2, value: z.zg })
+          upData.push({ time: t2, value: null as unknown as number })  // whitespace断开
+          downData.push({ time: t1, value: z.zd })
+          if (z.start !== z.end) downData.push({ time: t2, value: z.zd })
+          downData.push({ time: t2, value: null as unknown as number })
+        }
+      }
+      if (upData.length) {
+        try {
+          const sUp = chart.addLineSeries({
+            color: 'rgba(240,101,101,0.75)', lineWidth: 1, lineStyle: 0,
+            lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false,
+          })
+          sUp.setData(upData)
+          seriesRef.current.push(sUp)
+          const sDown = chart.addLineSeries({
+            color: 'rgba(80,180,120,0.75)', lineWidth: 1, lineStyle: 0,
+            lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false,
+          })
+          sDown.setData(downData)
+          seriesRef.current.push(sDown)
+        } catch (e) { console.warn('[中枢矩形跳过]', e) }
+      }
+    }
+
     // 中枢上下沿 (水平虚线): 优先动态中枢(zsAsOf=视角历史时回放的当时中枢), 否则最新中枢
     const zs = zsAsOf && zsAsOf.zd > 0 && zsAsOf.zg > zsAsOf.zd ? zsAsOf : chanlun.last_zhongshu
     if (zs) {
@@ -560,7 +597,7 @@ function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef, zsAsOf, onZ
         } catch (e) { console.warn('[买卖点markers跳过]', e) }
       }
     }
-  }, [chanlun, kline, chartRef, candleSeriesRef, zsAsOf])
+  }, [chanlun, kline, chartRef, candleSeriesRef, zsAsOf, showAllZs])
 
   return null
 }
