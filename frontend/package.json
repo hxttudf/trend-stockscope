@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "postinstall": "node scripts/patch-lwc-transparency.cjs"
   },
   "dependencies": {
     "lightweight-charts": "^4.2.3",
