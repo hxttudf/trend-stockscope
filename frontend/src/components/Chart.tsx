@@ -15,7 +15,7 @@ export interface CrosshairInfo {
 interface ChanlunData {
   bi: { time: string; type: string; price: number }[]
   segs: { time: string; type: string; price: number }[]
-  last_zhongshu: { zd: number; zg: number; ext: number } | null
+  last_zhongshu: { zd: number; zg: number; ext: number; since?: string } | null
   zhongshu_list?: { start: string; end: string; zd: number; zg: number; ext: number }[]  // 全部已确认中枢(矩形框用)
   trend: string
   buy_sell: { time: string; type: string; price: number }[]
@@ -525,6 +525,34 @@ function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef, zsAsOf, onZ
           down.setData([{ time: t1, value: z.zd }, { time: t2, value: z.zd }])
           seriesRef.current.push(down)
         } catch (e) { console.warn('[中枢矩形跳过]', e) }
+      }
+    }
+    // 最新中枢(雏形/未确认结束)矩形: since → 最新K线日期
+    // 若与列表最后一个同一起始日则已画过(如600580 4/29→7/20), 跳过避免重复
+    const lastZ = chanlun.zhongshu_list?.length ? chanlun.zhongshu_list[chanlun.zhongshu_list.length - 1] : null
+    const lz = chanlun.last_zhongshu
+    if (showAllZs && lz && lz.since && (!lastZ || lastZ.start !== lz.since)) {
+      const klineEnd = kline.length ? kline[kline.length - 1].time : null
+      if (klineEnd) {
+        const t1 = toBD(lz.since)
+        const t2 = toBD(klineEnd)
+        if (t1 && t2 && bdStr(t1 as Time) <= bdStr(t2 as Time)) {
+          try {
+            const zsColor2 = 'rgba(57,197,207,0.9)'
+            const up = chart.addLineSeries({
+              color: zsColor2, lineWidth: 2, lineStyle: 2,
+              lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false,
+            })
+            up.setData([{ time: t1, value: lz.zg }, { time: t2, value: lz.zg }])
+            seriesRef.current.push(up)
+            const down = chart.addLineSeries({
+              color: zsColor2, lineWidth: 2, lineStyle: 2,
+              lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false,
+            })
+            down.setData([{ time: t1, value: lz.zd }, { time: t2, value: lz.zd }])
+            seriesRef.current.push(down)
+          } catch (e) { console.warn('[最新中枢矩形跳过]', e) }
+        }
       }
     }
 
