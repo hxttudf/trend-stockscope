@@ -34,6 +34,8 @@ interface ChartProps {
   benchmarkTime?: string | null
   focusDate?: string | null
   chanlun?: ChanlunData | null
+  zsAsOf?: { date: string; zd: number; zg: number; ext: number; since?: string } | null  // 动态中枢(视角历史时回放)
+  onZsRangeChange?: (date: string) => void  // 视角最右日期变化(空串=回到最新)
 }
 const COLORS = {
   bg: '#0d1117',
@@ -69,7 +71,7 @@ const bdStr = (t: Time | string): string => {
 
 export default memo(Chart)
 
-function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, benchmarkTime, focusDate, chanlun }: ChartProps) {
+function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, benchmarkTime, focusDate, chanlun, zsAsOf, onZsRangeChange }: ChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const macdContainerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
@@ -406,20 +408,48 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, b
     <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
       <div ref={containerRef} style={{ width: '100%', flex: 1, minHeight: 0, touchAction: 'manipulation' }} />
       <div ref={macdContainerRef} style={{ width: '100%', height: 120, flexShrink: 0, borderTop: '1px solid var(--border, #30363d)' }} />
-      {chartReady && chanOverlayReady && <ChanlunOverlay chanlun={chanlun ?? null} kline={kline} chartRef={chartRef} candleSeriesRef={candleSeriesRef} />}
+      {chartReady && chanOverlayReady && <ChanlunOverlay chanlun={chanlun ?? null} kline={kline} chartRef={chartRef} candleSeriesRef={candleSeriesRef} zsAsOf={zsAsOf ?? null} onZsRangeChange={onZsRangeChange} />}
     </div>
   )
 }
 
 // ═══ 缠论绘制(完整版): 线段折线 + 笔 + 中枢线 + 买卖点标记 ═══
-function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef }: {
+function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef, zsAsOf, onZsRangeChange }: {
   chanlun: ChanlunData | null
   kline: KlinePoint[]
   chartRef: React.RefObject<IChartApi | null>
   candleSeriesRef: React.RefObject<ISeriesApi<'Candlestick'> | null>
+  zsAsOf?: { date: string; zd: number; zg: number; ext: number; since?: string } | null
+  onZsRangeChange?: (date: string) => void
 }) {
   const seriesRef = useRef<ISeriesApi<'Line'>[]>([])
   const priceLinesRef = useRef<ReturnType<ISeriesApi<'Candlestick'>['createPriceLine']>[]>([])
+
+  // 动态中枢: 视角最右日期变化 → 通知父组件回放当时中枢(debounce 300ms)
+  useEffect(() => {
+    const chart = chartRef.current
+    if (!chart || !onZsRangeChange) return
+    const lastKlineTime = kline.length ? kline[kline.length - 1].time : ''
+    let timer: number | null = null
+    let lastDate = ''
+    const handler = () => {
+      const vr = chart.timeScale().getVisibleRange()
+      if (!vr || !vr.to) return
+      const d = bdStr(vr.to as Time)
+      if (d === lastDate) return
+      lastDate = d
+      if (timer) clearTimeout(timer)
+      timer = window.setTimeout(() => {
+        // 视角最右=最新K线 → 传空串(用默认最新中枢); 否则回放当时
+        onZsRangeChange(d === lastKlineTime ? '' : d)
+      }, 300)
+    }
+    chart.timeScale().subscribeVisibleLogicalRangeChange(handler)
+    return () => {
+      chart.timeScale().unsubscribeVisibleLogicalRangeChange(handler)
+      if (timer) clearTimeout(timer)
+    }
+  }, [chartRef, onZsRangeChange, kline])
 
   useEffect(() => {
     // 清理旧的
@@ -469,13 +499,15 @@ function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef }: {
       }
     }
 
-    // 中枢上下沿 (水平虚线)
-    if (chanlun.last_zhongshu) {
-      const { zd, zg } = chanlun.last_zhongshu
+    // 中枢上下沿 (水平虚线): 优先动态中枢(zsAsOf=视角历史时回放的当时中枢), 否则最新中枢
+    const zs = zsAsOf && zsAsOf.zd > 0 && zsAsOf.zg > zsAsOf.zd ? zsAsOf : chanlun.last_zhongshu
+    if (zs) {
+      const { zd, zg } = zs
       if (zg > zd) {
+        const tag = zsAsOf ? `截至${zsAsOf.date}` : '最新'
         const pl1 = candle.createPriceLine({
           price: zg, color: 'rgba(240,101,101,0.7)',
-          lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: `中枢上(${chanlun.last_zhongshu.ext}段)`,
+          lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: `中枢上 ${tag}(${zs.ext}段)`,
         })
         const pl2 = candle.createPriceLine({
           price: zd, color: 'rgba(80,180,120,0.7)',
@@ -528,7 +560,7 @@ function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef }: {
         } catch (e) { console.warn('[买卖点markers跳过]', e) }
       }
     }
-  }, [chanlun, kline, chartRef, candleSeriesRef])
+  }, [chanlun, kline, chartRef, candleSeriesRef, zsAsOf])
 
   return null
 }

@@ -639,9 +639,14 @@ def api_chanlun_signals():
 @app.route("/api/chanlun/<symbol>")
 def api_chanlun(symbol):
     """缠论分析(完整版): 笔/线段/中枢/走势类型/背驰/买卖点
-    附加: DB中被推翻的信号(status='error')以灰色✗标记追加到buy_sell"""
+    附加: DB中被推翻的信号(status='error')以灰色✗标记追加到buy_sell
+    可选: ?as_of=YYYY-MM-DD 回放该日期的结构(动态中枢, light模式只返回中枢)"""
     import chanlun_full
-    d = chanlun_full.analyze(symbol)
+    as_of = request.args.get("as_of")
+    d = chanlun_full.analyze(symbol, as_of=as_of, light=bool(as_of))
+    if as_of:
+        # 动态中枢请求: 只返回中枢+基础信息, 不追加errs
+        return json.dumps(d, ensure_ascii=False)
     try:
         mp = db_conn(TREND_DB)
         errs = mp.execute(

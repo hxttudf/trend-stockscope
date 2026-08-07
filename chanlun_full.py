@@ -201,9 +201,9 @@ def calc_zhongshu_bi(bi):
     return zs_list
 
 
-def last_zhongshu_effective(bi, zs_list):
+def last_zhongshu_effective(bi, merged, zs_list):
     """最近有效中枢(前端显示用): 优先"雏形中枢"(最后3-4笔重叠, 贴近当前价)
-    否则回退到最近已形成中枢"""
+    否则回退到最近已形成中枢; since=中枢起始日期(画区间用)"""
     tail = bi[-4:] if len(bi) >= 4 else bi
     if len(tail) >= 3:
         spans = []
@@ -214,10 +214,13 @@ def last_zhongshu_effective(bi, zs_list):
         zg = min(s[1] for s in spans)
         zd = max(s[0] for s in spans)
         if zg > zd:
-            return {"zd": round(zd, 2), "zg": round(zg, 2), "ext": len(tail)}
+            return {"zd": round(zd, 2), "zg": round(zg, 2), "ext": len(tail), "since": merged[tail[0][0]][0]}
     if zs_list:
         z = zs_list[-1]
-        return {"zd": round(z["zd"], 2), "zg": round(z["zg"], 2), "ext": z["ext"]}
+        # 中枢确认日 = 第4笔(d笔)端点日期
+        i4 = z["bi_start"] + 3
+        since = merged[bi[i4][0]][0] if i4 < len(bi) else merged[bi[-1][0]][0]
+        return {"zd": round(z["zd"], 2), "zg": round(z["zg"], 2), "ext": z["ext"], "since": since}
     return None
 
 
@@ -472,12 +475,19 @@ def find_buy_sell(bi, zs_list, trend, dif, merged, last_n_days):
     return res, chain, sell_chain
 
 
-def analyze(symbol, window_days=7):
-    """完整缠论分析: window_days=信号检测窗口(交易日)"""
+def analyze(symbol, window_days=7, as_of=None, light=False):
+    """完整缠论分析: window_days=信号检测窗口(交易日)
+    as_of: 截断到该日期(含), 回放"当时"的缠论结构(动态中枢用)
+    light: 只算结构/中枢(跳过MACD/买卖点), 动态中枢请求用"""
     conn = sqlite3.connect(DB)
-    rows = conn.execute(
-        "SELECT date, open, high, low, close, close_qfq, volume FROM stock_daily "
-        "WHERE symbol=? AND close_qfq>0 ORDER BY date", (symbol,)).fetchall()
+    if as_of:
+        rows = conn.execute(
+            "SELECT date, open, high, low, close, close_qfq, volume FROM stock_daily "
+            "WHERE symbol=? AND close_qfq>0 AND date<=? ORDER BY date", (symbol, as_of)).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT date, open, high, low, close, close_qfq, volume FROM stock_daily "
+            "WHERE symbol=? AND close_qfq>0 ORDER BY date", (symbol,)).fetchall()
     conn.close()
     if len(rows) < 150:
         return {"error": "数据不足"}
@@ -490,6 +500,15 @@ def analyze(symbol, window_days=7):
     segs = calc_segments(bi)
     zs_list = calc_zhongshu_bi(bi)  # 笔级中枢=日线级别
     trend = trend_type(zs_list)
+
+    if light:
+        return {
+            "symbol": symbol, "as_of": as_of,
+            "bars": len(rows),
+            "trend": trend,
+            "last_zhongshu": last_zhongshu_effective(bi, merged, zs_list),
+        }
+
     dif, dea, hist = macd_data([r[3] for r in qf_rows])
 
     last_n = set(r[0] for r in qf_rows[-window_days:])
@@ -500,7 +519,7 @@ def analyze(symbol, window_days=7):
         "bars": len(rows),
         "bi_cnt": len(bi), "seg_cnt": len(segs), "zs_cnt": len(zs_list),
         "trend": trend,
-        "last_zhongshu": last_zhongshu_effective(bi, zs_list),
+        "last_zhongshu": last_zhongshu_effective(bi, merged, zs_list),
         "buy_sell": [{"time": x[1], "type": x[0], "price": x[2]} for x in buy_sell],
         "chain": [{"time": x[1], "type": x[0], "price": x[2]} for x in chain],
         "sell_chain": [{"time": x[1], "type": x[0], "price": x[2]} for x in sell_chain],

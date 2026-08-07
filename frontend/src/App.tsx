@@ -123,6 +123,8 @@ export default function App() {
   const [measureMode, setMeasureMode] = useState(false)
   const [chanlunMode, setChanlunMode] = useState(true)  // 默认选中缠(笔/中枢/买卖点)
   const [chanlunData, setChanlunData] = useState<any>(null)
+  const [zsAsOf, setZsAsOf] = useState<any>(null)  // 动态中枢: {date, zd, zg, ext, since} 视角历史时回放当时中枢
+  const zsSeq = useRef(0)  // 动态中枢请求独立序号(防旧股票/旧日期响应覆盖)
   const loadSeq = useRef(0)  // K线请求序号: 防快速切股竞态(旧响应覆盖新)
   const chanlunSeq = useRef(0)  // chanlun请求独立序号(不干扰K线)
   const [benchmarkIdx, setBenchmarkIdx] = useState<number | null>(null)
@@ -288,14 +290,31 @@ export default function App() {
   useEffect(() => {
     if (chanlunMode && currentStock) {
       const seq = ++chanlunSeq.current
+      zsSeq.current++  // 切股/重载: 使旧股票的动态中枢请求失效
+      setZsAsOf(null)  // 回到默认最新中枢
       fetch(`/stockscope/api/chanlun/${currentStock.symbol}`)
         .then(r => r.json())
         .then(d => { if (seq === chanlunSeq.current) setChanlunData(d) })
         .catch(() => { if (seq === chanlunSeq.current) setChanlunData(null) })
     } else {
       setChanlunData(null)
+      setZsAsOf(null)
     }
   }, [chanlunMode, currentStock, qfq])
+
+  // 动态中枢: 视角滚到历史时, 按当时日期回放中枢(轻量as_of请求)
+  const loadZsAsOf = useCallback((date: string) => {
+    if (!currentStock) return
+    const seq = ++zsSeq.current
+    if (!date) {  // 视角回到最新 → 用默认最新中枢
+      if (seq === zsSeq.current) setZsAsOf(null)
+      return
+    }
+    fetch(`/stockscope/api/chanlun/${currentStock.symbol}?as_of=${date}`)
+      .then(r => r.json())
+      .then(d => { if (seq === zsSeq.current && d?.last_zhongshu) setZsAsOf({ date, ...d.last_zhongshu }) })
+      .catch(() => { if (seq === zsSeq.current) setZsAsOf(null) })
+  }, [currentStock])
 
   // Update info bar when kline data loads
   useEffect(() => {
@@ -655,6 +674,8 @@ export default function App() {
               benchmarkTime={benchmarkIdx !== null && kline ? kline.kline[benchmarkIdx]?.time : null}
               focusDate={focusDate}
               chanlun={chanlunMode ? chanlunData : null}
+              zsAsOf={zsAsOf}
+              onZsRangeChange={loadZsAsOf}
             />
             </ChartErrorBoundary>
             {(!currentStock || !kline) && (
