@@ -531,7 +531,10 @@ function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef, zsAsOf, onZ
     // 若与列表最后一个同一起始日则已画过(如600580 4/29→7/20), 跳过避免重复
     const lastZ = chanlun.zhongshu_list?.length ? chanlun.zhongshu_list[chanlun.zhongshu_list.length - 1] : null
     const lz = chanlun.last_zhongshu
-    if (showAllZs && lz && lz.since && (!lastZ || lastZ.start !== lz.since)) {
+    // 去重: 仅当列表末位与雏形中枢 起始日+值 都相同才算已画(603256: 同日不同值必须画)
+    const sameAsLast = !!lastZ && lastZ.start === lz?.since
+      && Math.abs(lastZ.zd - (lz?.zd ?? -1)) < 0.01 && Math.abs(lastZ.zg - (lz?.zg ?? -1)) < 0.01
+    if (showAllZs && lz && lz.since && !sameAsLast) {
       const klineEnd = kline.length ? kline[kline.length - 1].time : null
       if (klineEnd) {
         const t1 = toBD(lz.since)
