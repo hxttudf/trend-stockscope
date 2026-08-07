@@ -10,7 +10,7 @@
     "postinstall": "node scripts/patch-lwc-transparency.cjs"
   },
   "dependencies": {
-    "lightweight-charts": "^4.2.3",
+    "lightweight-charts": "^5.2.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },

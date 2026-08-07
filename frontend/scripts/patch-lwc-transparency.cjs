@@ -16,6 +16,8 @@ const targets = [
 const pairs = [
   ['_internal_background: `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`',
    '_internal_background: `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${rgb[3]})`'],
+  ['_internal_background: `rgb(${rgba[0]}, ${rgba[1]}, ${rgba[2]})`',
+   '_internal_background: `rgba(${rgba[0]}, ${rgba[1]}, ${rgba[2]}, ${rgba[3]})`'],
   ['rgb(${i[0]}, ${i[1]}, ${i[2]})',
    'rgba(${i[0]}, ${i[1]}, ${i[2]}, ${i[3]})'],
 ]
