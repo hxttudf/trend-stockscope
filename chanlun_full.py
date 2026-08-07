@@ -203,7 +203,9 @@ def calc_zhongshu_bi(bi):
 
 def last_zhongshu_effective(bi, merged, zs_list):
     """最近有效中枢(前端显示用): 优先"雏形中枢"(最后3-4笔重叠, 贴近当前价)
-    否则回退到最近已形成中枢; since=中枢起始日期(画区间用)"""
+    否则回退到最近已形成中枢; since=中枢起始日期(画区间用)
+    离开段检查: 回退时若最后一段(最近两笔)与中枢区间无重叠 → 已离开, 返回None
+    (修复: 桂冠600236 7/22后暴涨离开, 旧中枢9.4-9.47远离当前价致前端错位)"""
     tail = bi[-4:] if len(bi) >= 4 else bi
     if len(tail) >= 3:
         spans = []
@@ -217,6 +219,11 @@ def last_zhongshu_effective(bi, merged, zs_list):
             return {"zd": round(zd, 2), "zg": round(zg, 2), "ext": len(tail), "since": merged[tail[0][0]][0]}
     if zs_list:
         z = zs_list[-1]
+        # 离开段检查: 最后一段与中枢无重叠 → 无最新中枢(旧中枢已结束)
+        if len(bi) >= 2:
+            lo, hi = min(bi[-2][2], bi[-1][2]), max(bi[-2][2], bi[-1][2])
+            if hi <= z["zd"] or lo >= z["zg"]:
+                return None
         # 中枢确认日 = 第4笔(d笔)端点日期
         i4 = z["bi_start"] + 3
         since = merged[bi[i4][0]][0] if i4 < len(bi) else merged[bi[-1][0]][0]
@@ -231,8 +238,8 @@ def zhongshu_history(bi, merged, zs_list):
     out = []
     for z in zs_list:
         bs, be = z["bi_start"], z["bi_end"]
-        i4 = bs + 3
-        start = merged[bi[i4][0]][0] if i4 < len(bi) else merged[bi[bs][0]][0]
+        # start=重叠起始日(第1笔端点) — 修复: 确认日(第4笔端点)致桂冠600236等暴涨中枢缩成单日矩形被跳过
+        start = merged[bi[bs][0]][0] if bs < len(bi) else merged[bi[bs][0]][0]
         end = merged[bi[be][0]][0] if be < len(bi) else merged[bi[bs][0]][0]
         if start and end and end >= start:
             out.append({"start": start, "end": end,
