@@ -219,11 +219,6 @@ def last_zhongshu_effective(bi, merged, zs_list):
             return {"zd": round(zd, 2), "zg": round(zg, 2), "ext": len(tail), "since": merged[tail[0][0]][0]}
     if zs_list:
         z = zs_list[-1]
-        # 离开段检查: 最后一段与中枢无重叠 → 无最新中枢(旧中枢已结束)
-        if len(bi) >= 2:
-            lo, hi = min(bi[-2][2], bi[-1][2]), max(bi[-2][2], bi[-1][2])
-            if hi <= z["zd"] or lo >= z["zg"]:
-                return None
         # 中枢确认日 = 第4笔(d笔)端点日期
         i4 = z["bi_start"] + 3
         since = merged[bi[i4][0]][0] if i4 < len(bi) else merged[bi[-1][0]][0]
