@@ -434,6 +434,25 @@ def api_chanlun_dates():
             # 盘中预览: 正式表(已确认) + 未确认增量(preview_signals的preview状态日期)
             pv_dates = [r[0] for r in conn.execute(
                 "SELECT DISTINCT signal_date FROM preview_signals WHERE status='preview'").fetchall()]
+            if typ in ("二三买", "二三卖"):
+                # 重合类: 正式表已确认重合 + preview表未确认重合 合并(修复: 原逻辑只查正式表, 预览日期丢失)
+                bt = "二买" if typ == "二三买" else "二卖"
+                st = "三买" if typ == "二三买" else "三卖"
+                rows = conn.execute(
+                    "SELECT a.signal_date, COUNT(DISTINCT a.symbol) FROM chanlun_signals a "
+                    "JOIN chanlun_signals b ON a.symbol=b.symbol AND a.signal_date=b.signal_date "
+                    "WHERE a.signal_type=? AND b.signal_type=? "
+                    "GROUP BY a.signal_date", (bt, st)).fetchall()
+                pv_rows = conn.execute(
+                    "SELECT a.signal_date, COUNT(DISTINCT a.symbol) FROM preview_signals a "
+                    "JOIN preview_signals b ON a.symbol=b.symbol AND a.signal_date=b.signal_date "
+                    "WHERE a.status='preview' AND a.signal_type=? AND b.signal_type=? "
+                    "GROUP BY a.signal_date", (bt, st)).fetchall()
+                merged = {}
+                for d, n in rows + pv_rows:
+                    merged[d] = max(merged.get(d, 0), n)
+                out = sorted(merged.items(), key=lambda x: x[0], reverse=True)[:60]
+                return json.dumps([{"date": d, "total": n} for d, n in out], ensure_ascii=False)
             if typ == "二三买":
                 rows = conn.execute(
                     "SELECT a.signal_date, COUNT(DISTINCT a.symbol) FROM chanlun_signals a "
