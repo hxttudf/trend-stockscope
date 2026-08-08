@@ -503,7 +503,7 @@ export default function App() {
 
   // Select from picks — jump to signal date
   const handleSelectPick = (pick: PickRecord) => {
-    setHighlightSignal({ date: pick.date, label: pick.strategy_id || '选股' })
+    setHighlightSignal({ date: pick.date, label: (pick.strategy_id || 'original').split(',')[0] })
     loadStock(pick.symbol, pick.name, pick.date)
   }
 
@@ -587,8 +587,7 @@ export default function App() {
             style={{ fontSize: 11, padding: '2px 6px' }}>
             M
           </button>
-          <button className={`toolbar-btn ${chanlunMode ? 'active' : ''}`}
-            onClick={() => setChanlunMode(m => !m)}
+          <button className="toolbar-btn active" title="缠论常驻显示(笔/段/买卖点)"
             style={{ fontSize: 11, padding: '2px 6px' }}>
             缠
           </button>
@@ -684,7 +683,7 @@ export default function App() {
               benchmarkTime={benchmarkIdx !== null && kline ? kline.kline[benchmarkIdx]?.time : null}
               highlightSignal={highlightSignal}
               focusDate={focusDate}
-              chanlun={chanlunMode ? chanlunData : null}
+              chanlun={chanlunData}
               zsAsOf={zsAsOf}
               onZsRangeChange={loadZsAsOf}
               showAllZs={showAllZs}
@@ -950,7 +949,7 @@ export default function App() {
                 laogaoPicks.map(p => (
                   <div key={p.symbol + p.status}
                     className={`watchlist-item ${currentStock?.symbol === p.symbol ? 'active' : ''}`}
-                    onClick={() => { setHighlightSignal({ date: p.date, label: '底部确认' }); loadStock(p.symbol, p.name, p.date) }}>
+                    onClick={() => { setHighlightSignal({ date: p.date, label: 'bottom_confirm' }); loadStock(p.symbol, p.name, p.date) }}>
                     <div style={{ flex: 1 }}>
                       <span className="wl-sym">{p.symbol}</span>
                       <span className="wl-name">{p.name}</span>

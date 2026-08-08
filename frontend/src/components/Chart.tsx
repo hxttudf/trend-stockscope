@@ -429,6 +429,18 @@ function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef, zsAsOf, onZ
   showAllZs?: boolean
 }) {
   const seriesRef = useRef<ISeriesApi<'Line'>[]>([])
+  const markersApiRef = useRef<any>(null)
+  // markers plugin 生命周期=组件: 只创建一次, 更新用setMarkers替换(5.x createSeriesMarkers多次调用会累积)
+  useEffect(() => {
+    if (candleSeriesRef.current) {
+      markersApiRef.current = createSeriesMarkers(candleSeriesRef.current, [])
+    }
+    return () => {
+      try { markersApiRef.current?.detach() } catch (e) { /* noop */ }
+      markersApiRef.current = null
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const priceLinesRef = useRef<ReturnType<ISeriesApi<'Candlestick'>['createPriceLine']>[]>([])
 
   // 动态中枢: 视角最右日期变化 → 通知父组件回放当时中枢(debounce 300ms)
@@ -624,13 +636,23 @@ function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef, zsAsOf, onZ
           })
         }
       }
-      // 来源信号高亮(从选股/底部确认/缠论tab点击): 白色圆点+标签
+      // 来源信号高亮(从选股/底部确认/缠论tab点击): 策略专属图标+颜色
+      const STRAT_MARKERS: Record<string, { text: string; color: string }> = {
+        'premium_b': { text: '▲极B', color: '#ffd93d' },
+        'premium_b2': { text: '⬡极B2', color: '#f0883e' },
+        'premium_a': { text: '■极A', color: '#d4d4d4' },
+        'original': { text: '●原', color: '#00d2d3' },
+        'ultra_shrink': { text: '▼超缩', color: '#ff9ff3' },
+        'bottom_confirm': { text: '▲底确', color: '#2ea043' },
+      }
+      // 来源信号高亮(从选股/底部确认/缠论tab点击): 策略专属图标+颜色
       if (highlightSignal?.date) {
         const hIdx = kline.findIndex(k => k.time === highlightSignal.date)
         if (hIdx >= 0) {
+          const sm = STRAT_MARKERS[highlightSignal.label] || { text: highlightSignal.label || '信号', color: '#ffffff' }
           allMarkers.push({
-            time: toBD(highlightSignal.date), position: 'belowBar', color: '#ffffff',
-            shape: 'circle', text: (highlightSignal.label || '信号').slice(0, 2), ov: false, isHighlight: true,
+            time: toBD(highlightSignal.date), position: 'belowBar', color: sm.color,
+            shape: 'circle', text: sm.text.slice(0, 3), ov: false, isHighlight: true,
           })
         }
       }
@@ -642,7 +664,7 @@ function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef, zsAsOf, onZ
       })
       // 可视区域渲染: 只画当前屏幕内的markers, 滚动/缩放时间轴时重渲染(不限制数量)
       const timeIdx = new Map(kline.map((k, i) => [k.time, i]))
-      const renderVisibleMarkers = () => {
+      const renderVisibleMarkers2 = () => {
         const chart = chartRef.current
         if (!chart || !candleSeriesRef.current) return
         const vr = chart.timeScale().getVisibleLogicalRange()
@@ -652,14 +674,14 @@ function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef, zsAsOf, onZ
           const i = timeIdx.get(bdStr(m.time as Time))
           return i !== undefined && i >= from && i <= to
         })
-        try { createSeriesMarkers(candleSeriesRef.current!, shown) }
+        try { markersApiRef.current?.setMarkers(shown) }
         catch (e) { console.warn('[买卖点markers跳过]', e) }
       }
-      renderVisibleMarkers()
-      chartRef.current?.timeScale().subscribeVisibleLogicalRangeChange(renderVisibleMarkers)
-      // 清理: 组件卸载/数据变化时取消订阅
+      renderVisibleMarkers2()
+      chartRef.current?.timeScale().subscribeVisibleLogicalRangeChange(renderVisibleMarkers2)
+      // 清理: 组件卸载/数据变化时取消订阅 + 分离markers plugin
       return () => {
-        try { chartRef.current?.timeScale().unsubscribeVisibleLogicalRangeChange(renderVisibleMarkers) } catch (e) { /* noop */ }
+        try { chartRef.current?.timeScale().unsubscribeVisibleLogicalRangeChange(renderVisibleMarkers2) } catch (e) { /* noop */ }
       }
     }
   }, [chanlun, kline, chartRef, candleSeriesRef, zsAsOf, showAllZs, benchmarkTime, highlightSignal])
