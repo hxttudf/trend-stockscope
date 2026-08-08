@@ -673,6 +673,23 @@ def analyze(symbol, window_days=7, as_of=None, light=False):
                        "zd": round(x[3], 2), "zg": round(x[4], 2),
                        "score": sc, "strength": st})
 
+
+    # 卖点信号(正式链路补全): find_all_signals 生成一卖/二卖/三卖 — 预览与正式统一
+    try:
+        all_sig = find_all_signals(bi, zs_list, dif, merged)
+        for typ, t, p, zd, zg in all_sig:
+            if '卖' in typ and t in last_n:
+                try:
+                    di = dates_qf.index(t)
+                    sc = calc_score(typ, zd, zg, closes_qf, highs_qf, lows_qf, vols_qf, di)
+                    st = calc_strength(sc)
+                except Exception:
+                    sc, st = 50.0, 'neutral'
+                bs_out.append({"time": t, "type": typ, "price": round(p, 2),
+                               "zd": round(zd, 2), "zg": round(zg, 2),
+                               "score": sc, "strength": st})
+    except Exception:
+        pass
     return {
         "symbol": symbol,
         "bars": len(rows),
