@@ -678,19 +678,23 @@ def api_chanlun(symbol):
                  "confirmed_date": cd, "confirmed_later": cl})
     except Exception:
         pass
-    # 实时信号标记确认信息: signal_date < 最新交易日 = 事后确认(later=1)
-    cur_date = d.get("cur_date", "")
+    # 实时信号确认信息: 优先用DB回放判定的confirmed_later(只有真正延迟确认的才标"后"), 无记录=当时确认(0)
+    try:
+        mp2 = db_conn(TREND_DB)
+        later_rows = mp2.execute(
+            "SELECT signal_type, signal_date FROM chanlun_signals WHERE symbol=? AND confirmed_later=1", (symbol,)).fetchall()
+        mp2.close()
+        later_set = {(t, d) for t, d in later_rows}
+    except Exception:
+        later_set = set()
     for bs in d.get("buy_sell", []):
         if bs.get("status") == "error":
             continue
-        bs["confirmed_later"] = 1 if bs.get("time", "") < cur_date else 0
-        bs["confirmed_date"] = cur_date
+        bs["confirmed_later"] = 1 if (bs.get("type", ""), bs.get("time", "")) in later_set else 0
     for bs in d.get("chain", []):
-        bs["confirmed_later"] = 1 if bs.get("time", "") < cur_date else 0
-        bs["confirmed_date"] = cur_date
+        bs["confirmed_later"] = 1 if (bs.get("type", ""), bs.get("time", "")) in later_set else 0
     for bs in d.get("sell_chain", []):
-        bs["confirmed_later"] = 1 if bs.get("time", "") < cur_date else 0
-        bs["confirmed_date"] = cur_date
+        bs["confirmed_later"] = 1 if (bs.get("type", ""), bs.get("time", "")) in later_set else 0
     return json.dumps(d, ensure_ascii=False)
 
 
