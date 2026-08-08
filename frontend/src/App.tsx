@@ -656,8 +656,8 @@ export default function App() {
             <span>MA20 <span ref={ma20Ref} style={{ color: '#58a6ff' }}>--</span></span>
             <span>MA60 <span ref={ma60Ref} style={{ color: '#bc8cff' }}>--</span></span>
           </div>
-          {/* 第三行：区间测量 */}
-          {measureMode && (
+          {/* 第三行：区间测量 (有基准才显示, 避免空行撑高数据栏) */}
+          {measureMode && benchmarkIdx !== null && (
             <div style={{ display: 'flex', gap: 10, fontSize: 11, color: 'var(--text-secondary)', padding: '0 12px 4px', whiteSpace: 'nowrap' }}>
               <span ref={measureRef}></span>
             </div>

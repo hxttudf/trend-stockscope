@@ -410,18 +410,19 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, b
     <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
       <div ref={containerRef} style={{ width: '100%', flex: 1, minHeight: 0, touchAction: 'manipulation' }} />
       <div ref={macdContainerRef} style={{ width: '100%', height: 120, flexShrink: 0, borderTop: '1px solid var(--border, #30363d)' }} />
-      {chartReady && chanOverlayReady && <ChanlunOverlay chanlun={chanlun ?? null} kline={kline} chartRef={chartRef} candleSeriesRef={candleSeriesRef} zsAsOf={zsAsOf ?? null} onZsRangeChange={onZsRangeChange} showAllZs={showAllZs ?? false} />}
+      {chartReady && chanOverlayReady && <ChanlunOverlay chanlun={chanlun ?? null} kline={kline} chartRef={chartRef} candleSeriesRef={candleSeriesRef} zsAsOf={zsAsOf ?? null} onZsRangeChange={onZsRangeChange} showAllZs={showAllZs ?? false} benchmarkTime={benchmarkTime} />}
     </div>
   )
 }
 
 // ═══ 缠论绘制(完整版): 线段折线 + 笔 + 中枢线 + 买卖点标记 ═══
-function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef, zsAsOf, onZsRangeChange, showAllZs }: {
+function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef, zsAsOf, onZsRangeChange, showAllZs, benchmarkTime }: {
   chanlun: ChanlunData | null
   kline: KlinePoint[]
   chartRef: React.RefObject<IChartApi | null>
   candleSeriesRef: React.RefObject<ISeriesApi<'Candlestick'> | null>
   zsAsOf?: { date: string; zd: number; zg: number; ext: number; since?: string } | null
+  benchmarkTime?: string | null
   onZsRangeChange?: (date: string) => void
   showAllZs?: boolean
 }) {
@@ -583,7 +584,6 @@ function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef, zsAsOf, onZ
         '一卖': { color: '#2ea043', label: '1卖' }, '二卖': { color: '#8b949e', label: '2卖' }, '三卖': { color: '#58a6ff', label: '3卖' },
         '✗推翻': { color: '#666666', label: '✗' },
       }
-      const markers: any[] = []
       const seen = new Set<string>()
       // 买点链画在K线下方(belowBar), 卖点链画在K线上方(aboveBar)
       const allSignals: { time: string; type: string; price: number; pos: 'belowBar' | 'aboveBar' }[] = [
@@ -593,6 +593,8 @@ function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef, zsAsOf, onZ
       ]
       // 被推翻信号的时点(✗类型) — 这些时点只画✗, 不画原类型
       const overturnedTimes = new Set(allSignals.filter(s => (s.type || '').startsWith('✗')).map(s => s.time))
+      // 全部信号markers构建(不限制数量) — 渲染时按可视区域过滤
+      const allMarkers: any[] = []
       allSignals.forEach(bs => {
         const isOv = (bs.type || '').startsWith('✗')
         // 被推翻的时点只画✗, 跳过原类型(避免1买与✗1买重叠)
@@ -604,28 +606,51 @@ function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef, zsAsOf, onZ
         if (idx < 0) return
         const c = cfg[bs.type] || { color: '#888', label: bs.type }
         const pos = bs.pos || (bs.type.includes('卖') ? 'aboveBar' : 'belowBar')
-        if (bs.time) markers.push({
+        if (bs.time) allMarkers.push({
           time: toBD(bs.time), position: pos, color: c.color,
           shape: pos === 'aboveBar' ? 'arrowDown' : 'arrowUp', text: c.label,
           ov: isOv,
         })
       })
-      if (markers.length) {
-        // 挂到主K线series上(有全部K线数据点, marker按time精确对齐, 不会错位)
-        // 注意: 不能挂笔折线series(只有笔端点, 非端点的信号会错位到最近端点)
-        try {
-          // 排序: 正常信号优先(时间倒序), ✗推翻信号不挤占正常信号名额
-          markers.sort((a, b) => {
-            const aOv = a.ov ? 1 : 0, bOv = b.ov ? 1 : 0
-            if (aOv !== bOv) return aOv - bOv
-            return bdStr(a.time as Time) < bdStr(b.time as Time) ? 1 : -1
+      // 基准点标记(黄色圆点) — M测量模式点击图表设基准后显示
+      if (benchmarkTime) {
+        const bIdx = kline.findIndex(k => k.time === benchmarkTime)
+        if (bIdx >= 0) {
+          allMarkers.push({
+            time: toBD(benchmarkTime), position: 'belowBar', color: '#f0d43a',
+            shape: 'circle', text: '基', ov: false, isBench: true,
           })
-          const shown = [...markers.filter(m => !m.ov).slice(0, 12), ...markers.filter(m => m.ov).slice(0, 5)]
-          createSeriesMarkers(candleSeriesRef.current!, shown.filter(m => m && m.time != null))
-        } catch (e) { console.warn('[买卖点markers跳过]', e) }
+        }
+      }
+      // 排序: 正常信号优先(时间倒序), ✗推翻信号靠后不挤占
+      allMarkers.sort((a, b) => {
+        const aOv = a.ov ? 1 : 0, bOv = b.ov ? 1 : 0
+        if (aOv !== bOv) return aOv - bOv
+        return bdStr(a.time as Time) < bdStr(b.time as Time) ? 1 : -1
+      })
+      // 可视区域渲染: 只画当前屏幕内的markers, 滚动/缩放时间轴时重渲染(不限制数量)
+      const timeIdx = new Map(kline.map((k, i) => [k.time, i]))
+      const renderVisibleMarkers = () => {
+        const chart = chartRef.current
+        if (!chart || !candleSeriesRef.current) return
+        const vr = chart.timeScale().getVisibleLogicalRange()
+        if (!vr) return
+        const from = Math.floor(vr.from) - 2, to = Math.ceil(vr.to) + 2
+        const shown = allMarkers.filter(m => {
+          const i = timeIdx.get(bdStr(m.time as Time))
+          return i !== undefined && i >= from && i <= to
+        })
+        try { createSeriesMarkers(candleSeriesRef.current!, shown) }
+        catch (e) { console.warn('[买卖点markers跳过]', e) }
+      }
+      renderVisibleMarkers()
+      chartRef.current?.timeScale().subscribeVisibleLogicalRangeChange(renderVisibleMarkers)
+      // 清理: 组件卸载/数据变化时取消订阅
+      return () => {
+        try { chartRef.current?.timeScale().unsubscribeVisibleLogicalRangeChange(renderVisibleMarkers) } catch (e) { /* noop */ }
       }
     }
-  }, [chanlun, kline, chartRef, candleSeriesRef, zsAsOf, showAllZs])
+  }, [chanlun, kline, chartRef, candleSeriesRef, zsAsOf, showAllZs, benchmarkTime])
 
   return null
 }
