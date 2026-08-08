@@ -587,14 +587,10 @@ export default function App() {
             style={{ fontSize: 11, padding: '2px 6px' }}>
             M
           </button>
-          <button className="toolbar-btn active" title="缠论常驻显示(笔/段/买卖点)"
-            style={{ fontSize: 11, padding: '2px 6px' }}>
-            缠
-          </button>
           <button className={`toolbar-btn ${showAllZs ? 'active' : ''}`}
             onClick={() => setShowAllZs(s => !s)}
             style={{ fontSize: 11, padding: '2px 6px' }}
-            title="显示全部历史中枢(矩形框)">
+            title="中枢显示开关(青色上下沿线+矩形框)">
             枢
           </button>
 
