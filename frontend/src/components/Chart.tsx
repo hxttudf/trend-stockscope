@@ -574,9 +574,9 @@ function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef, zsAsOf, onZ
       }
     }
 
-    // 中枢上下沿 (水平虚线+价格轴标签): 优先动态中枢(zsAsOf=视角历史时回放的当时中枢), 否则最新中枢 — 受"枢"按钮控制, 不常驻
+    // 动态中枢上下沿(水平虚线+价格轴标签): 常驻显示(当前视角中枢); 历史中枢矩形框才受"枢"按钮控制
     const zs = zsAsOf && zsAsOf.zd > 0 && zsAsOf.zg > zsAsOf.zd ? zsAsOf : chanlun.last_zhongshu
-    if (showAllZs && zs && zs.zg > zs.zd) {
+    if (zs && zs.zg > zs.zd) {
       const tag = zsAsOf ? `截至${zsAsOf.date}` : '最新'
       try {
         const pl1 = candle.createPriceLine({
