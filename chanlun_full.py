@@ -253,12 +253,42 @@ def calc_score(typ, zd, zg, closes, highs, lows, vols, i):
         s += max(-25.0, min(25.0, -chg * 0.8))
         return round(max(0.0, min(100.0, s)), 1)
     if typ == '二买':
+        # 胜率导向v2(回测样本外: 胜率top20% 62.6% vs 基准60.7%, 收益4.69%): 
+        # 深回踩+位置适中(避开过热)+站上均线适度+距低点近+涨停少
+        if i < 60:
+            ma20 = sum(closes[i - 20:i + 1]) / 21
+            L20 = min(lows[i - 20:i + 1])
+            b5 = (c0 / ma20 - 1) * 100 if ma20 > 0 else 0
+            b1 = (c0 - L20) / L20 * 100 if L20 > 0 else 0
+            s = 50.0 + _lin(b5, -1.62, 5.66, -15, 15) + _lin(b1, -65.53, 9.73, -12, 12)
+            return round(max(0.0, min(100.0, s)), 1)
         ma20 = sum(closes[i - 20:i + 1]) / 21
-        L20 = min(lows[i - 20:i + 1])
+        L60 = min(lows[i - 60:i + 1])
+        H60 = max(highs[i - 60:i + 1])
+        H40 = max(highs[i - 40:i + 1])
         b5 = (c0 / ma20 - 1) * 100 if ma20 > 0 else 0
-        b1 = (c0 - L20) / L20 * 100 if L20 > 0 else 0
-        s = 50.0 + _lin(b5, -1.62, 5.66, -15, 15) + _lin(b1, -65.53, 9.73, -12, 12)
-        return round(max(0.0, min(100.0, s)), 1)
+        t1 = (c0 - H40) / H40 * 100 if H40 > 0 else 0
+        pos60 = (c0 - L60) / (H60 - L60) * 100 if H60 > L60 else 50
+        dist_lo = (c0 / L60 - 1) * 100 if L60 > 0 else 0
+        limit20 = int(sum(1 for k in range(i - 20, i + 1) if k > 0 and closes[k] and closes[k - 1] and highs[k] > closes[k - 1] * 1.09))
+        s = 50.0 + _lin(-t1, 0, 35, -10, 12)
+        if pos60 < 30:
+            s += (pos60 - 30) * 0.3
+        elif pos60 <= 65:
+            s += 8.0
+        else:
+            s += 8.0 - (pos60 - 65) * 0.45
+        s += _lin(b5, -4, 7, -8, 8)
+        if b5 > 10:
+            s -= (b5 - 10) * 0.6
+        if dist_lo < 10:
+            s += dist_lo * 0.2
+        elif dist_lo <= 35:
+            s += 5.0
+        else:
+            s += 5.0 - (dist_lo - 35) * 0.3
+        s -= limit20 * 2.0
+        return round(max(0.0, min(100.0, s + 15.0)), 1)  # +15平移: 排序不变, 恢复75+强信号区间
     if typ == '三买':
         H40 = max(highs[i - 40:i + 1])
         H40p = max(highs[i - 80:i - 40]) if i >= 80 else H40
