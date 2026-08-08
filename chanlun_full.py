@@ -226,6 +226,64 @@ def last_zhongshu_effective(bi, merged, zs_list):
     return None
 
 
+def _lin(v, p20, p80, lo, hi):
+    """线性映射: 因子值v按历史分位边界[p20,p80]映射到[lo,hi], 超出截断"""
+    if p80 <= p20:
+        return 0.0
+    x = (v - p20) / (p80 - p20)
+    return max(lo, min(hi, lo + x * (hi - lo)))
+
+
+def calc_score(typ, zd, zg, closes, highs, lows, vols, i):
+    """分类型连续强度分(0-100):
+    一买=深跌超跌(原公式); 二买=强势回调低吸(站上MA20+回调深度, 回测样本外+1.32);
+    三买=突破回踩(突破力度+箱体高度-回踩深度, 回测样本外+2.26)
+    固定分位边界来自2021-2026回测(验证集保持单调, 防过拟合); 只用≤i数据(无未来函数)"""
+    if i < 20 or i >= len(closes):
+        return 50.0
+    c0 = closes[i]
+    if c0 <= 0:
+        return 50.0
+    if typ == '一买':
+        avg = sum(vols[i - 20:i]) / 20 if i >= 20 else 1
+        vr = vols[i] / avg if avg else 1
+        s = 50.0 + max(-20.0, min(20.0, (vr - 1) * 15))
+        c10 = closes[i - 10]
+        chg = (c0 - c10) / c10 * 100 if c10 else 0
+        s += max(-25.0, min(25.0, -chg * 0.8))
+        return round(max(0.0, min(100.0, s)), 1)
+    if typ == '二买':
+        ma20 = sum(closes[i - 20:i + 1]) / 21
+        L20 = min(lows[i - 20:i + 1])
+        b5 = (c0 / ma20 - 1) * 100 if ma20 > 0 else 0
+        b1 = (c0 - L20) / L20 * 100 if L20 > 0 else 0
+        s = 50.0 + _lin(b5, -1.62, 5.66, -15, 15) + _lin(b1, -65.53, 9.73, -12, 12)
+        return round(max(0.0, min(100.0, s)), 1)
+    if typ == '三买':
+        H40 = max(highs[i - 40:i + 1])
+        H40p = max(highs[i - 80:i - 40]) if i >= 80 else H40
+        L60 = min(lows[i - 60:i + 1])
+        t2 = (H40 / H40p - 1) * 100 if H40p > 0 else 0
+        t5 = (H40 - L60) / L60 * 100 if L60 > 0 else 0
+        t1 = (c0 - H40) / H40 * 100 if H40 > 0 else 0
+        s = 50.0 + _lin(t2, -0.98, 29.25, 0, 15) + _lin(t5, 24.49, 68.88, 0, 15) + _lin(-t1, 9.97, 77.37, -8, 8)
+        return round(max(0.0, min(100.0, s)), 1)
+    # 卖点: 原逻辑(涨得多分高)
+    c10 = closes[i - 10]
+    chg = (c0 - c10) / c10 * 100 if c10 else 0
+    s = 50.0 + max(-25.0, min(25.0, chg * 0.8))
+    return round(max(0.0, min(100.0, s)), 1)
+
+
+def calc_strength(score):
+    """分数驱动强弱: >=75强(买入纪律), <=40弱"""
+    if score >= 75:
+        return 'strong'
+    if score <= 40:
+        return 'weak'
+    return 'neutral'
+
+
 # ═══ 第6层: 走势类型 (趋势/盘整) ═══
 def zhongshu_history(bi, merged, zs_list):
     """全部已确认中枢 → [{start, end, zd, zg, ext}]
@@ -531,6 +589,27 @@ def analyze(symbol, window_days=7, as_of=None, light=False):
     last_n = set(r[0] for r in qf_rows[-window_days:])
     buy_sell, chain, sell_chain = find_buy_sell(bi, zs_list, trend, dif, merged, last_n)
 
+    # 分类型打分(一买深跌/二买强势回调/三买突破回踩) — 与trend-shrink-picks版一致
+    closes_qf = [r[3] for r in qf_rows]
+    highs_qf = [r[1] for r in qf_rows]
+    lows_qf = [r[2] for r in qf_rows]
+    vols_qf = [r[6] for r in rows]
+    dates_qf = [r[0] for r in qf_rows]
+    bs_out = []
+    for x in buy_sell:
+        try:
+            di = dates_qf.index(x[1])
+        except ValueError:
+            di = -1
+        if di >= 0:
+            sc = calc_score(x[0], x[3], x[4], closes_qf, highs_qf, lows_qf, vols_qf, di)
+            st = calc_strength(sc)
+        else:
+            sc, st = 50.0, 'neutral'
+        bs_out.append({"time": x[1], "type": x[0], "price": round(x[2], 2),
+                       "zd": round(x[3], 2), "zg": round(x[4], 2),
+                       "score": sc, "strength": st})
+
     return {
         "symbol": symbol,
         "bars": len(rows),
@@ -538,7 +617,7 @@ def analyze(symbol, window_days=7, as_of=None, light=False):
         "trend": trend,
         "last_zhongshu": last_zhongshu_effective(bi, merged, zs_list),
         "zhongshu_list": zhongshu_history(bi, merged, zs_list),
-        "buy_sell": [{"time": x[1], "type": x[0], "price": x[2]} for x in buy_sell],
+        "buy_sell": bs_out,
         "chain": [{"time": x[1], "type": x[0], "price": x[2]} for x in chain],
         "sell_chain": [{"time": x[1], "type": x[0], "price": x[2]} for x in sell_chain],
         "bi": [{"time": merged[b[0]][0], "type": b[1], "price": round(b[2], 2)} for b in bi[-40:]],
