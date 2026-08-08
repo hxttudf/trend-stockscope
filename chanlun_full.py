@@ -298,11 +298,44 @@ def calc_score(typ, zd, zg, closes, highs, lows, vols, i):
         t1 = (c0 - H40) / H40 * 100 if H40 > 0 else 0
         s = 50.0 + _lin(t2, -0.98, 29.25, 0, 15) + _lin(t5, 24.49, 68.88, 0, 15) + _lin(-t1, 9.97, 77.37, -8, 8)
         return round(max(0.0, min(100.0, s)), 1)
-    # 卖点: 原逻辑(涨得多分高)
+    # 卖点分类型打分(回测: 三卖样本外+4.8pp最强, 一卖20日+6.6pp稳定, 二卖持平)
+    if i < 60:
+        c10 = closes[i - 10]
+        chg = (c0 - c10) / c10 * 100 if c10 else 0
+        s = 50.0 + max(-25.0, min(25.0, chg * 0.8))
+        return round(max(0.0, min(100.0, s)), 1)
+    L60 = min(lows[i - 60:i + 1])
+    H60 = max(highs[i - 60:i + 1])
+    H40 = max(highs[i - 40:i + 1])
+    ma20 = sum(closes[i - 20:i + 1]) / 21
     c10 = closes[i - 10]
-    chg = (c0 - c10) / c10 * 100 if c10 else 0
-    s = 50.0 + max(-25.0, min(25.0, chg * 0.8))
-    return round(max(0.0, min(100.0, s)), 1)
+    chg10 = (c0 - c10) / c10 * 100 if c10 else 0
+    t5 = (H40 - L60) / L60 * 100 if L60 > 0 else 0
+    pos60 = (c0 - L60) / (H60 - L60) * 100 if H60 > L60 else 50
+    dist_lo = (c0 / L60 - 1) * 100 if L60 > 0 else 0
+    vtrend = (sum(vols[i - 5:i]) / 5 / max(sum(vols[i - 60:i]) / 60, 1) - 1) * 100
+    limit20 = int(sum(1 for k in range(i - 20, i + 1) if k > 0 and closes[k] and closes[k - 1] and highs[k] > closes[k - 1] * 1.09))
+    if typ == '一卖':
+        s = 50.0 + _lin(dist_lo, 10, 50, -8, 10)
+        if dist_lo > 60:
+            s -= (dist_lo - 60) * 0.3
+        s += _lin(t5, 20, 60, -5, 6) + _lin(pos60, 35, 75, -4, 5)
+        s -= limit20 * 1.2
+        if chg10 > 15:
+            s -= (chg10 - 15) * 0.4
+        return round(max(0.0, min(100.0, s + 15.0)), 1)  # +15平移: 恢复75+强信号
+    if typ == '二卖':
+        s = 50.0 + _lin(-chg10, -8, 8, -6, 8) + _lin(dist_lo, 8, 40, -6, 8)
+        if dist_lo > 50:
+            s -= (dist_lo - 50) * 0.25
+        s += _lin(vtrend, -25, 25, -5, 6) + _lin(t5, 20, 60, -4, 5)
+        s -= limit20 * 1.0
+        return round(max(0.0, min(100.0, s + 15.0)), 1)  # +15平移
+    # 三卖: 弱势破位
+    s = 50.0 + _lin(-chg10, -10, 5, -8, 12) + _lin(-dist_lo, 0, 15, -6, 8)
+    s += _lin(-pos60, 10, 35, -5, 7) + _lin(vtrend, -30, 20, -5, 8)
+    s -= limit20 * 1.5
+    return round(max(0.0, min(100.0, s + 15.0)), 1)  # +15平移
 
 
 def calc_strength(score):
