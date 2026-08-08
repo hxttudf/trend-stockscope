@@ -618,7 +618,7 @@ export default function App() {
       {/* Stock Info Bar — DOM via refs, no re-render on crosshair */}
       {currentStock && (
         <div className="stock-info-bar">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, overflow: 'hidden' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, overflow: 'hidden', flexWrap: 'nowrap', whiteSpace: 'nowrap' }}>
             <span className="symbol">{currentStock.symbol}</span>
             <span className="name">{currentStock.name}</span>
             <span ref={priceRef} className="price">--</span>
@@ -639,14 +639,14 @@ export default function App() {
               <span style={{ color: 'var(--text-muted)' }}>至今</span>
               <span ref={dayGainRef} style={{ fontWeight: 500 }}></span>
             </div>
-            {/* 信号图例 — 固定展示全部5个策略 */}
-            <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0, marginLeft: 8 }}>
-              <span className="signal-badge premium_b">▲极品B</span>
-              <span className="signal-badge premium_b2">⬡极品B2</span>
-              <span className="signal-badge premium_a">■极品A</span>
-              <span className="signal-badge original">●原版</span>
-              <span className="signal-badge ultra_shrink">▼超缩量</span>
-              <span className="signal-badge bottom_confirm">▲底部确认</span>
+            {/* 信号图例 — 固定展示全部5个策略(缩写, 防换行撑高数据栏) */}
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0, marginLeft: 8, flexWrap: 'nowrap', whiteSpace: 'nowrap' }}>
+              <span className="signal-badge premium_b">▲极B</span>
+              <span className="signal-badge premium_b2">⬡极B2</span>
+              <span className="signal-badge premium_a">■极A</span>
+              <span className="signal-badge original">●原</span>
+              <span className="signal-badge ultra_shrink">▼超缩</span>
+              <span className="signal-badge bottom_confirm">▲底确</span>
             </div>
           </div>
           {/* 第二行：MA均线跟随光标 */}
