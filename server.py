@@ -669,14 +669,28 @@ def api_chanlun(symbol):
     try:
         mp = db_conn(TREND_DB)
         errs = mp.execute(
-            "SELECT signal_type, signal_date, price FROM chanlun_signals "
+            "SELECT signal_type, signal_date, price, confirmed_date, confirmed_later FROM chanlun_signals "
             "WHERE symbol=? AND status='error'", (symbol,)).fetchall()
         mp.close()
-        for t, sd, p in errs:
+        for t, sd, p, cd, cl in errs:
             d.setdefault("buy_sell", []).append(
-                {"time": sd, "type": f"✗{t}", "price": round(p, 2) if p else 0, "status": "error"})
+                {"time": sd, "type": f"✗{t}", "price": round(p, 2) if p else 0, "status": "error",
+                 "confirmed_date": cd, "confirmed_later": cl})
     except Exception:
         pass
+    # 实时信号标记确认信息: signal_date < 最新交易日 = 事后确认(later=1)
+    cur_date = d.get("cur_date", "")
+    for bs in d.get("buy_sell", []):
+        if bs.get("status") == "error":
+            continue
+        bs["confirmed_later"] = 1 if bs.get("time", "") < cur_date else 0
+        bs["confirmed_date"] = cur_date
+    for bs in d.get("chain", []):
+        bs["confirmed_later"] = 1 if bs.get("time", "") < cur_date else 0
+        bs["confirmed_date"] = cur_date
+    for bs in d.get("sell_chain", []):
+        bs["confirmed_later"] = 1 if bs.get("time", "") < cur_date else 0
+        bs["confirmed_date"] = cur_date
     return json.dumps(d, ensure_ascii=False)
 
 

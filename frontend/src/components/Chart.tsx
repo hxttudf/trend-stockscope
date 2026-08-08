@@ -600,7 +600,7 @@ function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef, zsAsOf, onZ
       }
       const seen = new Set<string>()
       // 买点链画在K线下方(belowBar), 卖点链画在K线上方(aboveBar)
-      const allSignals: { time: string; type: string; price: number; pos: 'belowBar' | 'aboveBar' }[] = [
+      const allSignals: { time: string; type: string; price: number; pos: 'belowBar' | 'aboveBar'; confirmed_later?: number }[] = [
         ...(chanlun.chain || []).map(s => ({ ...s, pos: 'belowBar' as const })),
         ...(chanlun.buy_sell || []).map(s => ({ ...s, pos: 'belowBar' as const })),
         ...(chanlun.sell_chain || []).map(s => ({ ...s, pos: 'aboveBar' as const })),
@@ -608,6 +608,13 @@ function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef, zsAsOf, onZ
       // 被推翻信号的时点(✗类型) — 这些时点只画✗, 不画原类型
       const overturnedTimes = new Set(allSignals.filter(s => (s.type || '').startsWith('✗')).map(s => s.time))
       // 全部信号markers构建(不限制数量) — 渲染时按可视区域过滤
+      // 事后确认(confirmed_later=1)信号: 半透明+↩标记; 被推翻✗也区分(事后确认被推翻=半透明, 当时确认=实心)
+      const hexToRgba = (hex: string, a: number) => {
+        const h = hex.replace('#', '')
+        if (h.length !== 6) return hex
+        const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16)
+        return `rgba(${r},${g},${b},${a})`
+      }
       const allMarkers: any[] = []
       allSignals.forEach(bs => {
         const isOv = (bs.type || '').startsWith('✗')
@@ -620,10 +627,14 @@ function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef, zsAsOf, onZ
         if (idx < 0) return
         const c = cfg[bs.type] || { color: '#888', label: bs.type }
         const pos = bs.pos || (bs.type.includes('卖') ? 'aboveBar' : 'belowBar')
+        // 事后确认: 半透明 + text后缀↩; 被推翻✗: 事后确认被推翻也半透明(与当时确认被推翻区分)
+        const isLater = bs.confirmed_later === 1
+        const color = isLater ? hexToRgba(c.color, 0.4) : c.color
+        const text = isLater ? (c.label + '↩') : c.label
         if (bs.time) allMarkers.push({
-          time: toBD(bs.time), position: pos, color: c.color,
-          shape: pos === 'aboveBar' ? 'arrowDown' : 'arrowUp', text: c.label,
-          ov: isOv,
+          time: toBD(bs.time), position: pos, color,
+          shape: pos === 'aboveBar' ? 'arrowDown' : 'arrowUp', text,
+          ov: isOv, later: isLater,
         })
       })
       // 基准点标记(黄色圆点) — M测量模式点击图表设基准后显示
