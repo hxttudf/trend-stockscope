@@ -235,7 +235,7 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, b
       if (!rect) return
       const x = e.clientX - rect.left
       const time = chartRef.current.timeScale().coordinateToTime(x)
-      if (time != null) cb(String(time))
+      if (time != null) cb(bdStr(time as Time))
     }
     const el = containerRef.current
     el?.addEventListener('click', handleContainerClick)
@@ -607,15 +607,21 @@ function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef, zsAsOf, onZ
         if (bs.time) markers.push({
           time: toBD(bs.time), position: pos, color: c.color,
           shape: pos === 'aboveBar' ? 'arrowDown' : 'arrowUp', text: c.label,
+          ov: isOv,
         })
       })
       if (markers.length) {
         // 挂到主K线series上(有全部K线数据点, marker按time精确对齐, 不会错位)
         // 注意: 不能挂笔折线series(只有笔端点, 非端点的信号会错位到最近端点)
         try {
-          // 按时间倒序(最近在前)
-          markers.sort((a, b) => bdStr(a.time as Time) < bdStr(b.time as Time) ? 1 : -1)
-          createSeriesMarkers(candleSeriesRef.current!, markers.slice(0, 10).filter(m => m && m.time != null))
+          // 排序: 正常信号优先(时间倒序), ✗推翻信号不挤占正常信号名额
+          markers.sort((a, b) => {
+            const aOv = a.ov ? 1 : 0, bOv = b.ov ? 1 : 0
+            if (aOv !== bOv) return aOv - bOv
+            return bdStr(a.time as Time) < bdStr(b.time as Time) ? 1 : -1
+          })
+          const shown = [...markers.filter(m => !m.ov).slice(0, 12), ...markers.filter(m => m.ov).slice(0, 5)]
+          createSeriesMarkers(candleSeriesRef.current!, shown.filter(m => m && m.time != null))
         } catch (e) { console.warn('[买卖点markers跳过]', e) }
       }
     }
