@@ -887,7 +887,7 @@ export default function App() {
                     return (
                     <div key={s.symbol + s.date + dispType}
                       className={`watchlist-item ${currentStock?.symbol === s.symbol ? 'active' : ''} ${hasErr ? 'sig-error' : ''}`}
-                      onClick={() => { setHighlightSignal({ date: s.date, label: dispType.replace('✗', '').split('+')[0] || '信号' }); loadStock(s.symbol, s.name, s.date) }}
+                      onClick={() => { setHighlightSignal(null); loadStock(s.symbol, s.name, s.date) }}
                       style={hasErr ? { opacity: 0.55 } : undefined}>
                       <div style={{ flex: 1 }}>
                         <span className="wl-sym">{s.symbol}</span>
