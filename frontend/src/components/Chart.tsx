@@ -21,7 +21,7 @@ interface ChanlunData {
   buy_sell: { time: string; type: string; price: number }[]
   chain: { time: string; type: string; price: number }[]
   sell_chain: { time: string; type: string; price: number }[]
-  db_signals?: { time: string; type: string; price: number; status?: string; confirmed_later?: number }[]  // DB全历史信号(K线markers)
+  db_signals?: { time: string; type: string; price: number; status?: string; confirmed_later?: number; confirm_days?: number; ov_days?: number }[]  // DB全历史信号(K线markers)
   cur_price: number
   cur_date: string
 }
@@ -602,7 +602,7 @@ function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef, zsAsOf, onZ
       const seen = new Set<string>()
       // markers数据源: DB全历史信号(每信号带status/confirmed_later) — 完整展示当时/事后/被推翻
       // 买点画K线下方(belowBar), 卖点画K线上方(aboveBar)
-      const allSignals: { time: string; type: string; price: number; pos: 'belowBar' | 'aboveBar'; status?: string; confirmed_later?: number }[] = [
+      const allSignals: { time: string; type: string; price: number; pos: 'belowBar' | 'aboveBar'; status?: string; confirmed_later?: number; confirm_days?: number; ov_days?: number }[] = [
         ...(chanlun.db_signals || []).map((s: any) => {
           const pos: 'belowBar' | 'aboveBar' = (s.type || '').includes('卖') ? 'aboveBar' : 'belowBar'
           return { ...s, pos }
@@ -621,8 +621,11 @@ function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef, zsAsOf, onZ
         const pos = bs.pos || (bs.type.includes('卖') ? 'aboveBar' : 'belowBar')
         const isOv = bs.status === 'error'
         const isLater = bs.confirmed_later === 1
-        // 文字区分: 被推翻✗前缀+灰色; 事后确认加"后"前缀
-        const text = (isOv ? '✗' : '') + (isLater ? '后' : '') + c.label
+        // 延迟天数标注: 被推翻标推翻延迟(✗1买(3)=+3天推翻); 事后确认标确认延迟(后1买(3)=+3天确认)
+        const daysSuffix = isOv
+          ? (bs.ov_days != null ? `(${bs.ov_days})` : '')
+          : (isLater ? (bs.confirm_days != null ? `(${bs.confirm_days})` : '') : '')
+        const text = (isOv ? '✗' : '') + (isLater ? '后' : '') + c.label + daysSuffix
         const color = isOv ? '#8b949e' : c.color
         if (bs.time) allMarkers.push({
           time: toBD(bs.time), position: pos, color,

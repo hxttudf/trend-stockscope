@@ -671,13 +671,34 @@ def api_chanlun(symbol):
         errs = mp.execute(
             "SELECT signal_type, signal_date, price, confirmed_date, confirmed_later FROM chanlun_signals "
             "WHERE symbol=? AND status='error' AND confirmed_date IS NOT NULL", (symbol,)).fetchall()
-        # 全历史信号(DB): K线markers数据源 — 每信号带status/confirmed_later, 展示当时/事后/被推翻
+        # 全历史信号(DB): K线markers数据源 — 每信号带status/confirmed_later/延迟天数
         dbs = mp.execute(
-            "SELECT signal_type, signal_date, price, status, confirmed_date, confirmed_later FROM chanlun_signals "
+            "SELECT signal_type, signal_date, price, status, confirmed_date, confirmed_later, overturned_date FROM chanlun_signals "
             "WHERE symbol=? ORDER BY signal_date", (symbol,)).fetchall()
+        # 延迟天数(交易日差): confirm_days=确认延迟, ov_days=推翻延迟 — K线标注用
+        confirm_days = {}
+        ov_days = {}
+        try:
+            sq = db_conn("/home/ubuntu/Sequoia-X-a/data/sequoia_v2.db")
+            tds = [r[0] for r in sq.execute(
+                "SELECT DISTINCT date FROM stock_daily WHERE symbol=? AND close_qfq>0 ORDER BY date", (symbol,)).fetchall()]
+            sq.close()
+            td_idx = {d: i for i, d in enumerate(tds)}
+            for ty, sd, p, st, cd, cl, od in dbs:
+                si = td_idx.get(sd, -1)
+                if si >= 0:
+                    ci = td_idx.get(cd, -1)
+                    oi = td_idx.get(od, -1)
+                    if ci > si:
+                        confirm_days[(ty, sd)] = ci - si
+                    if oi > si:
+                        ov_days[(ty, sd)] = oi - si
+        except Exception:
+            pass
         d["db_signals"] = [{"time": t, "type": ty, "price": round(p, 2) if p else 0,
-                            "status": st, "confirmed_date": cd, "confirmed_later": cl}
-                           for ty, t, p, st, cd, cl in dbs]
+                            "status": st, "confirmed_date": cd, "confirmed_later": cl,
+                            "confirm_days": confirm_days.get((ty, t)), "ov_days": ov_days.get((ty, t))}
+                           for ty, t, p, st, cd, cl, od in dbs]
         mp.close()
         for t, sd, p, cd, cl in errs:
             d.setdefault("buy_sell", []).append(
