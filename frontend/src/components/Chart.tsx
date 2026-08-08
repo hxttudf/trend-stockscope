@@ -608,13 +608,7 @@ function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef, zsAsOf, onZ
       // 被推翻信号的时点(✗类型) — 这些时点只画✗, 不画原类型
       const overturnedTimes = new Set(allSignals.filter(s => (s.type || '').startsWith('✗')).map(s => s.time))
       // 全部信号markers构建(不限制数量) — 渲染时按可视区域过滤
-      // 事后确认(confirmed_later=1)信号: 半透明+↩标记; 被推翻✗也区分(事后确认被推翻=半透明, 当时确认=实心)
-      const hexToRgba = (hex: string, a: number) => {
-        const h = hex.replace('#', '')
-        if (h.length !== 6) return hex
-        const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16)
-        return `rgba(${r},${g},${b},${a})`
-      }
+      // 确认时机文字区分: 事后确认加"后"前缀(如"后1买"); 被推翻✗统一灰色(✗1买=当时确认被推翻, ✗后1买=事后确认被推翻)
       const allMarkers: any[] = []
       allSignals.forEach(bs => {
         const isOv = (bs.type || '').startsWith('✗')
@@ -625,12 +619,13 @@ function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef, zsAsOf, onZ
         seen.add(key)
         const idx = kline.findIndex(k => k.time === bs.time)
         if (idx < 0) return
-        const c = cfg[bs.type] || { color: '#888', label: bs.type }
-        const pos = bs.pos || (bs.type.includes('卖') ? 'aboveBar' : 'belowBar')
-        // 事后确认: 半透明 + text后缀↩; 被推翻✗: 事后确认被推翻也半透明(与当时确认被推翻区分)
+        const base = isOv ? bs.type.replace('✗', '') : bs.type
+        const c = cfg[base] || { color: '#888', label: base }
+        const pos = bs.pos || (base.includes('卖') ? 'aboveBar' : 'belowBar')
         const isLater = bs.confirmed_later === 1
-        const color = isLater ? hexToRgba(c.color, 0.4) : c.color
-        const text = isLater ? (c.label + '↩') : c.label
+        // 文字区分确认时机: 事后确认加"后"前缀; 被推翻✗统一灰色
+        const text = (isOv ? '✗' : '') + (isLater ? '后' : '') + c.label
+        const color = isOv ? '#8b949e' : c.color
         if (bs.time) allMarkers.push({
           time: toBD(bs.time), position: pos, color,
           shape: pos === 'aboveBar' ? 'arrowDown' : 'arrowUp', text,
