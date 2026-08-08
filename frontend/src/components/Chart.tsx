@@ -599,31 +599,27 @@ function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef, zsAsOf, onZ
         '✗推翻': { color: '#666666', label: '✗' },
       }
       const seen = new Set<string>()
-      // 买点链画在K线下方(belowBar), 卖点链画在K线上方(aboveBar)
-      const allSignals: { time: string; type: string; price: number; pos: 'belowBar' | 'aboveBar'; confirmed_later?: number }[] = [
-        ...(chanlun.chain || []).map(s => ({ ...s, pos: 'belowBar' as const })),
-        ...(chanlun.buy_sell || []).map(s => ({ ...s, pos: 'belowBar' as const })),
-        ...(chanlun.sell_chain || []).map(s => ({ ...s, pos: 'aboveBar' as const })),
+      // markers数据源: DB全历史信号(每信号带status/confirmed_later) — 完整展示当时/事后/被推翻
+      // 买点画K线下方(belowBar), 卖点画K线上方(aboveBar)
+      const allSignals: { time: string; type: string; price: number; pos: 'belowBar' | 'aboveBar'; status?: string; confirmed_later?: number }[] = [
+        ...(chanlun.db_signals || []).map(s => ({
+          ...s, pos: ((s.type || '').includes('卖') ? 'aboveBar' : 'belowBar') as const,
+        })),
       ]
-      // 被推翻信号的时点(✗类型) — 这些时点只画✗, 不画原类型
-      const overturnedTimes = new Set(allSignals.filter(s => (s.type || '').startsWith('✗')).map(s => s.time))
       // 全部信号markers构建(不限制数量) — 渲染时按可视区域过滤
-      // 确认时机文字区分: 事后确认加"后"前缀(如"后1买"); 被推翻✗统一灰色(✗1买=当时确认被推翻, ✗后1买=事后确认被推翻)
+      // status=ok画原色(1买/后1买); status=error画灰色✗(✗1买=当时确认被推翻, ✗后1买=事后确认被推翻)
       const allMarkers: any[] = []
       allSignals.forEach(bs => {
-        const isOv = (bs.type || '').startsWith('✗')
-        // 被推翻的时点只画✗, 跳过原类型(避免1买与✗1买重叠)
-        if (overturnedTimes.has(bs.time) && !isOv) return
         const key = `${bs.time}_${bs.type}`
         if (seen.has(key)) return
         seen.add(key)
         const idx = kline.findIndex(k => k.time === bs.time)
         if (idx < 0) return
-        const base = isOv ? bs.type.replace('✗', '') : bs.type
-        const c = cfg[base] || { color: '#888', label: base }
-        const pos = bs.pos || (base.includes('卖') ? 'aboveBar' : 'belowBar')
+        const c = cfg[bs.type] || { color: '#888', label: bs.type }
+        const pos = bs.pos || (bs.type.includes('卖') ? 'aboveBar' : 'belowBar')
+        const isOv = bs.status === 'error'
         const isLater = bs.confirmed_later === 1
-        // 文字区分确认时机: 事后确认加"后"前缀; 被推翻✗统一灰色
+        // 文字区分: 被推翻✗前缀+灰色; 事后确认加"后"前缀
         const text = (isOv ? '✗' : '') + (isLater ? '后' : '') + c.label
         const color = isOv ? '#8b949e' : c.color
         if (bs.time) allMarkers.push({

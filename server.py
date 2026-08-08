@@ -671,6 +671,13 @@ def api_chanlun(symbol):
         errs = mp.execute(
             "SELECT signal_type, signal_date, price, confirmed_date, confirmed_later FROM chanlun_signals "
             "WHERE symbol=? AND status='error' AND confirmed_date IS NOT NULL", (symbol,)).fetchall()
+        # 全历史信号(DB): K线markers数据源 — 每信号带status/confirmed_later, 展示当时/事后/被推翻
+        dbs = mp.execute(
+            "SELECT signal_type, signal_date, price, status, confirmed_date, confirmed_later FROM chanlun_signals "
+            "WHERE symbol=? ORDER BY signal_date", (symbol,)).fetchall()
+        d["db_signals"] = [{"time": t, "type": ty, "price": round(p, 2) if p else 0,
+                            "status": st, "confirmed_date": cd, "confirmed_later": cl}
+                           for ty, t, p, st, cd, cl in dbs]
         mp.close()
         for t, sd, p, cd, cl in errs:
             d.setdefault("buy_sell", []).append(
