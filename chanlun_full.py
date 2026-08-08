@@ -650,51 +650,59 @@ def analyze(symbol, window_days=7, as_of=None, light=False, include_all=False):
     dif, dea, hist = macd_data([r[3] for r in qf_rows])
 
     last_n = set(r[0] for r in qf_rows[-window_days:])
-    buy_sell, chain, sell_chain = find_buy_sell(bi, zs_list, trend, dif, merged, last_n)
-
-    # 分类型打分(一买深跌/二买强势回调/三买突破回踩) — 与trend-shrink-picks版一致
+    # 统一信号源(用户定案): chain/buy_sell/sell_chain/all_signals 全部派生自 find_all_signals
+    # (消除 find_buy_sell 与 find_all_signals 双背驰判定的矛盾 — 同一天可能判出一买/二买冲突)
+    all_sig = []
+    try:
+        all_sig = find_all_signals(bi, zs_list, dif, merged)
+    except Exception:
+        all_sig = []
+    all_sig_sorted = sorted(all_sig, key=lambda x: (x[1], x[0]))
+    buys = [x for x in all_sig_sorted if '买' in x[0]]
+    sells = [x for x in all_sig_sorted if '卖' in x[0]]
+    # chain: 最近一买 + 其后二买/三买(演化链)
+    chain = []
+    ym_list = [x for x in buys if x[0] == '一买']
+    if ym_list:
+        lm = ym_list[-1]
+        chain.append(lm)
+        for x in buys:
+            if x[1] > lm[1] and x[0] in ('二买', '三买'):
+                chain.append(x)
+    # sell_chain: 最近一卖 + 其后二卖/三卖(对称)
+    sell_chain = []
+    ys_list = [x for x in sells if x[0] == '一卖']
+    if ys_list:
+        ls = ys_list[-1]
+        sell_chain.append(ls)
+        for x in sells:
+            if x[1] > ls[1] and x[0] in ('二卖', '三卖'):
+                sell_chain.append(x)
+    # 分类型打分(一买深跌/二买强势回调/三买突破回踩) — 窗口内信号带score
     closes_qf = [r[3] for r in qf_rows]
     highs_qf = [r[1] for r in qf_rows]
     lows_qf = [r[2] for r in qf_rows]
     vols_qf = [r[6] for r in rows]
     dates_qf = [r[0] for r in qf_rows]
     bs_out = []
-    for x in buy_sell:
+    for x in all_sig_sorted:
+        typ, t, p, zd, zg = x
+        if t not in last_n:
+            continue
         try:
-            di = dates_qf.index(x[1])
-        except ValueError:
-            di = -1
-        if di >= 0:
-            sc = calc_score(x[0], x[3], x[4], closes_qf, highs_qf, lows_qf, vols_qf, di)
+            di = dates_qf.index(t)
+            sc = calc_score(typ, zd, zg, closes_qf, highs_qf, lows_qf, vols_qf, di)
             st = calc_strength(sc)
-        else:
+        except Exception:
             sc, st = 50.0, 'neutral'
-        bs_out.append({"time": x[1], "type": x[0], "price": round(x[2], 2),
-                       "zd": round(x[3], 2), "zg": round(x[4], 2),
+        bs_out.append({"time": t, "type": typ, "price": round(p, 2),
+                       "zd": round(zd, 2), "zg": round(zg, 2),
                        "score": sc, "strength": st})
-
-
-    # 卖点信号(正式链路补全): find_all_signals 生成一卖/二卖/三卖 — 预览与正式统一
-    try:
-        all_sig = find_all_signals(bi, zs_list, dif, merged)
-        for typ, t, p, zd, zg in all_sig:
-            if '卖' in typ and t in last_n:
-                try:
-                    di = dates_qf.index(t)
-                    sc = calc_score(typ, zd, zg, closes_qf, highs_qf, lows_qf, vols_qf, di)
-                    st = calc_strength(sc)
-                except Exception:
-                    sc, st = 50.0, 'neutral'
-                bs_out.append({"time": t, "type": typ, "price": round(p, 2),
-                               "zd": round(zd, 2), "zg": round(zg, 2),
-                               "score": sc, "strength": st})
-    except Exception:
-        pass
-    # 全历史信号(验证/留痕用): 复用卖点块的find_all_signals结果
+    # 全历史信号(验证/留痕用)
     all_out = []
     if include_all:
         try:
-            all_out = [{"time": t, "type": typ, "price": round(p, 2)} for typ, t, p, _, _ in all_sig]
+            all_out = [{"time": t, "type": typ, "price": round(p, 2)} for typ, t, p, _, _ in all_sig_sorted]
         except Exception:
             all_out = []
     return {
@@ -704,7 +712,6 @@ def analyze(symbol, window_days=7, as_of=None, light=False, include_all=False):
         "bi_cnt": len(bi), "seg_cnt": len(segs), "zs_cnt": len(zs_list),
         "trend": trend,
         "last_zhongshu": last_zhongshu_effective(bi, merged, zs_list),
-        "zhongshu_list": zhongshu_history(bi, merged, zs_list),
         "buy_sell": bs_out,
         "chain": [{"time": x[1], "type": x[0], "price": x[2]} for x in chain],
         "sell_chain": [{"time": x[1], "type": x[0], "price": x[2]} for x in sell_chain],
@@ -713,7 +720,6 @@ def analyze(symbol, window_days=7, as_of=None, light=False, include_all=False):
         "cur_price": round(qf_rows[-1][3], 2),
         "cur_date": rows[-1][0],
     }
-
 
 if __name__ == "__main__":
     import json
