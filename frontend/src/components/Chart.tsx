@@ -21,6 +21,7 @@ interface ChanlunData {
   buy_sell: { time: string; type: string; price: number }[]
   chain: { time: string; type: string; price: number }[]
   sell_chain: { time: string; type: string; price: number }[]
+  db_signals?: { time: string; type: string; price: number; status?: string; confirmed_later?: number }[]  // DB全历史信号(K线markers)
   cur_price: number
   cur_date: string
 }
@@ -602,9 +603,10 @@ function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef, zsAsOf, onZ
       // markers数据源: DB全历史信号(每信号带status/confirmed_later) — 完整展示当时/事后/被推翻
       // 买点画K线下方(belowBar), 卖点画K线上方(aboveBar)
       const allSignals: { time: string; type: string; price: number; pos: 'belowBar' | 'aboveBar'; status?: string; confirmed_later?: number }[] = [
-        ...(chanlun.db_signals || []).map(s => ({
-          ...s, pos: ((s.type || '').includes('卖') ? 'aboveBar' : 'belowBar') as const,
-        })),
+        ...(chanlun.db_signals || []).map((s: any) => {
+          const pos: 'belowBar' | 'aboveBar' = (s.type || '').includes('卖') ? 'aboveBar' : 'belowBar'
+          return { ...s, pos }
+        }),
       ]
       // 全部信号markers构建(不限制数量) — 渲染时按可视区域过滤
       // status=ok画原色(1买/后1买); status=error画灰色✗(✗1买=当时确认被推翻, ✗后1买=事后确认被推翻)
