@@ -33,6 +33,7 @@ interface ChartProps {
   onCrosshairMove?: (data: CrosshairInfo | null) => void
   onChartClick?: (time: string) => void
   benchmarkTime?: string | null
+  highlightSignal?: { date: string; label: string } | null
   focusDate?: string | null
   chanlun?: ChanlunData | null
   zsAsOf?: { date: string; zd: number; zg: number; ext: number; since?: string } | null  // 动态中枢(视角历史时回放)
@@ -73,7 +74,7 @@ const bdStr = (t: Time | string): string => {
 
 export default memo(Chart)
 
-function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, benchmarkTime, focusDate, chanlun, zsAsOf, onZsRangeChange, showAllZs }: ChartProps) {
+function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, benchmarkTime, highlightSignal, focusDate, chanlun, zsAsOf, onZsRangeChange, showAllZs }: ChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const macdContainerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
@@ -410,19 +411,20 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, b
     <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
       <div ref={containerRef} style={{ width: '100%', flex: 1, minHeight: 0, touchAction: 'manipulation' }} />
       <div ref={macdContainerRef} style={{ width: '100%', height: 120, flexShrink: 0, borderTop: '1px solid var(--border, #30363d)' }} />
-      {chartReady && chanOverlayReady && <ChanlunOverlay chanlun={chanlun ?? null} kline={kline} chartRef={chartRef} candleSeriesRef={candleSeriesRef} zsAsOf={zsAsOf ?? null} onZsRangeChange={onZsRangeChange} showAllZs={showAllZs ?? false} benchmarkTime={benchmarkTime} />}
+      {chartReady && chanOverlayReady && <ChanlunOverlay chanlun={chanlun ?? null} kline={kline} chartRef={chartRef} candleSeriesRef={candleSeriesRef} zsAsOf={zsAsOf ?? null} onZsRangeChange={onZsRangeChange} showAllZs={showAllZs ?? false} benchmarkTime={benchmarkTime} highlightSignal={highlightSignal} />}
     </div>
   )
 }
 
 // ═══ 缠论绘制(完整版): 线段折线 + 笔 + 中枢线 + 买卖点标记 ═══
-function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef, zsAsOf, onZsRangeChange, showAllZs, benchmarkTime }: {
+function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef, zsAsOf, onZsRangeChange, showAllZs, benchmarkTime, highlightSignal }: {
   chanlun: ChanlunData | null
   kline: KlinePoint[]
   chartRef: React.RefObject<IChartApi | null>
   candleSeriesRef: React.RefObject<ISeriesApi<'Candlestick'> | null>
   zsAsOf?: { date: string; zd: number; zg: number; ext: number; since?: string } | null
   benchmarkTime?: string | null
+  highlightSignal?: { date: string; label: string } | null
   onZsRangeChange?: (date: string) => void
   showAllZs?: boolean
 }) {
@@ -622,6 +624,16 @@ function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef, zsAsOf, onZ
           })
         }
       }
+      // 来源信号高亮(从选股/底部确认/缠论tab点击): 白色圆点+标签
+      if (highlightSignal?.date) {
+        const hIdx = kline.findIndex(k => k.time === highlightSignal.date)
+        if (hIdx >= 0) {
+          allMarkers.push({
+            time: toBD(highlightSignal.date), position: 'belowBar', color: '#ffffff',
+            shape: 'circle', text: (highlightSignal.label || '信号').slice(0, 2), ov: false, isHighlight: true,
+          })
+        }
+      }
       // 排序: 正常信号优先(时间倒序), ✗推翻信号靠后不挤占
       allMarkers.sort((a, b) => {
         const aOv = a.ov ? 1 : 0, bOv = b.ov ? 1 : 0
@@ -650,7 +662,7 @@ function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef, zsAsOf, onZ
         try { chartRef.current?.timeScale().unsubscribeVisibleLogicalRangeChange(renderVisibleMarkers) } catch (e) { /* noop */ }
       }
     }
-  }, [chanlun, kline, chartRef, candleSeriesRef, zsAsOf, showAllZs, benchmarkTime])
+  }, [chanlun, kline, chartRef, candleSeriesRef, zsAsOf, showAllZs, benchmarkTime, highlightSignal])
 
   return null
 }

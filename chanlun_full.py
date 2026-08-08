@@ -613,7 +613,7 @@ def find_buy_sell(bi, zs_list, trend, dif, merged, last_n_days):
     return res, chain, sell_chain
 
 
-def analyze(symbol, window_days=7, as_of=None, light=False):
+def analyze(symbol, window_days=7, as_of=None, light=False, include_all=False):
     """完整缠论分析: window_days=信号检测窗口(交易日)
     as_of: 截断到该日期(含), 回放"当时"的缠论结构(动态中枢用)
     light: 只算结构/中枢(跳过MACD/买卖点), 动态中枢请求用"""
@@ -690,7 +690,15 @@ def analyze(symbol, window_days=7, as_of=None, light=False):
                                "score": sc, "strength": st})
     except Exception:
         pass
+    # 全历史信号(验证/留痕用): 复用卖点块的find_all_signals结果
+    all_out = []
+    if include_all:
+        try:
+            all_out = [{"time": t, "type": typ, "price": round(p, 2)} for typ, t, p, _, _ in all_sig]
+        except Exception:
+            all_out = []
     return {
+        "all_signals": all_out,
         "symbol": symbol,
         "bars": len(rows),
         "bi_cnt": len(bi), "seg_cnt": len(segs), "zs_cnt": len(zs_list),

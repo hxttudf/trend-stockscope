@@ -130,6 +130,7 @@ export default function App() {
   const chanlunSeq = useRef(0)  // chanlun请求独立序号(不干扰K线)
   const [benchmarkIdx, setBenchmarkIdx] = useState<number | null>(null)
   const [focusDate, setFocusDate] = useState<string | null>(null)  // 选股跳转时聚焦的日期
+  const [highlightSignal, setHighlightSignal] = useState<{ date: string; label: string } | null>(null)  // 来源信号高亮(从选股/底部确认/缠论tab点击)
 
   // ── Refs for crosshair direct-DOM updates ──
   const priceRef = useRef<HTMLSpanElement>(null)
@@ -496,11 +497,13 @@ export default function App() {
 
   // Select from watchlist
   const handleSelectWatchlist = (item: WatchlistItem) => {
+    setHighlightSignal(null)
     loadStock(item.symbol, item.name)
   }
 
   // Select from picks — jump to signal date
   const handleSelectPick = (pick: PickRecord) => {
+    setHighlightSignal({ date: pick.date, label: pick.strategy_id || '选股' })
     loadStock(pick.symbol, pick.name, pick.date)
   }
 
@@ -564,7 +567,7 @@ export default function App() {
             <div className="search-results">
               {searchResults.map(s => (
                 <div key={s.symbol} className="search-result-item"
-                  onMouseDown={() => loadStock(s.symbol, s.name)}>
+                  onMouseDown={() => { setHighlightSignal(null); loadStock(s.symbol, s.name) }}>
                   <span className="sym">{s.symbol}</span>
                   <span className="name">{s.name}</span>
                 </div>
@@ -679,6 +682,7 @@ export default function App() {
               onCrosshairMove={handleCrosshairMove}
               onChartClick={handleChartClick}
               benchmarkTime={benchmarkIdx !== null && kline ? kline.kline[benchmarkIdx]?.time : null}
+              highlightSignal={highlightSignal}
               focusDate={focusDate}
               chanlun={chanlunMode ? chanlunData : null}
               zsAsOf={zsAsOf}
@@ -888,7 +892,7 @@ export default function App() {
                     return (
                     <div key={s.symbol + s.date + dispType}
                       className={`watchlist-item ${currentStock?.symbol === s.symbol ? 'active' : ''} ${hasErr ? 'sig-error' : ''}`}
-                      onClick={() => loadStock(s.symbol, s.name, s.date)}
+                      onClick={() => { setHighlightSignal({ date: s.date, label: dispType.replace('✗', '').split('+')[0] || '信号' }); loadStock(s.symbol, s.name, s.date) }}
                       style={hasErr ? { opacity: 0.55 } : undefined}>
                       <div style={{ flex: 1 }}>
                         <span className="wl-sym">{s.symbol}</span>
@@ -946,7 +950,7 @@ export default function App() {
                 laogaoPicks.map(p => (
                   <div key={p.symbol + p.status}
                     className={`watchlist-item ${currentStock?.symbol === p.symbol ? 'active' : ''}`}
-                    onClick={() => loadStock(p.symbol, p.name, p.date)}>
+                    onClick={() => { setHighlightSignal({ date: p.date, label: '底部确认' }); loadStock(p.symbol, p.name, p.date) }}>
                     <div style={{ flex: 1 }}>
                       <span className="wl-sym">{p.symbol}</span>
                       <span className="wl-name">{p.name}</span>
