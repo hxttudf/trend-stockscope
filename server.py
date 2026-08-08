@@ -670,7 +670,7 @@ def api_chanlun(symbol):
         mp = db_conn(TREND_DB)
         errs = mp.execute(
             "SELECT signal_type, signal_date, price, confirmed_date, confirmed_later FROM chanlun_signals "
-            "WHERE symbol=? AND status='error'", (symbol,)).fetchall()
+            "WHERE symbol=? AND status='error' AND confirmed_date IS NOT NULL", (symbol,)).fetchall()
         mp.close()
         for t, sd, p, cd, cl in errs:
             d.setdefault("buy_sell", []).append(
