@@ -219,18 +219,26 @@ def last_zhongshu_effective(bi, merged, zs_list):
             return {"zd": round(zd, 2), "zg": round(zg, 2), "ext": len(tail), "since": merged[tail[0][0]][0]}
     if zs_list:
         # 离开段检查(修复000032: 7/20暴跌13.87跌破旧中枢20-23.5, 旧中枢远离当前价致前端错位):
-        # 从最近的已确认中枢往前找, 第一个与"最近一段(最后两笔)"有重叠的中枢=有效; 全部离开→None(新中枢未形成)
+        # 从最近的已确认中枢往前找, 第一个与"最近一段(最后两笔)"有重叠且近期形成(最近60根K线内)的中枢=有效
         last_bi = bi[-2:] if len(bi) >= 2 else bi
         seg_lo = min(b[2] for b in last_bi)
         seg_hi = max(b[2] for b in last_bi)
+        recent_start = merged[max(0, bi[-1][0] - 60)][0]  # 60根K线前的日期(近期限制, 防跨年中枢宽度错位)
         for zi in range(len(zs_list) - 1, -1, -1):
             z = zs_list[zi]
+            z_start = merged[bi[z["bi_start"]][0]][0]
+            if z_start < recent_start:
+                break
             if seg_hi >= z["zd"] and seg_lo <= z["zg"]:
                 # 中枢确认日 = 第4笔(d笔)端点日期
                 i4 = z["bi_start"] + 3
                 since = merged[bi[i4][0]][0] if i4 < len(bi) else merged[bi[-1][0]][0]
                 return {"zd": round(z["zd"], 2), "zg": round(z["zg"], 2), "ext": z["ext"], "since": since}
-        return None
+    # 无近期有效中枢: 用最后2笔的价格区间作雏形参考(贴近当前价, 宽度=最近段) — 修复000032回退到2024老中枢致宽度2年
+    if len(bi) >= 2:
+        b1, b2 = bi[-2], bi[-1]
+        lo, hi = min(b1[2], b2[2]), max(b1[2], b2[2])
+        return {"zd": round(lo, 2), "zg": round(hi, 2), "ext": 2, "since": merged[bi[-2][0]][0]}
     return None
 
 
