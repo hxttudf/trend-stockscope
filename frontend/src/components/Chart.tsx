@@ -557,7 +557,7 @@ function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef, zsAsOf, onZ
         const t2 = toBD(klineEnd)
         if (t1 && t2 && bdStr(t1 as Time) <= bdStr(t2 as Time)) {
           try {
-            const zsColor2 = 'rgba(57,197,207,0.9)'
+            const zsColor2 = 'rgba(240,165,60,0.9)'  // 雏形/最新中枢矩形: 橙色(与历史中枢青色区分)
             const up = chart.addSeries(LineSeries, {
               color: zsColor2, lineWidth: 2, lineStyle: 2,
               lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false,
