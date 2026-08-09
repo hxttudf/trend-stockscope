@@ -218,11 +218,19 @@ def last_zhongshu_effective(bi, merged, zs_list):
         if zg > zd:
             return {"zd": round(zd, 2), "zg": round(zg, 2), "ext": len(tail), "since": merged[tail[0][0]][0]}
     if zs_list:
-        z = zs_list[-1]
-        # 中枢确认日 = 第4笔(d笔)端点日期
-        i4 = z["bi_start"] + 3
-        since = merged[bi[i4][0]][0] if i4 < len(bi) else merged[bi[-1][0]][0]
-        return {"zd": round(z["zd"], 2), "zg": round(z["zg"], 2), "ext": z["ext"], "since": since}
+        # 离开段检查(修复000032: 7/20暴跌13.87跌破旧中枢20-23.5, 旧中枢远离当前价致前端错位):
+        # 从最近的已确认中枢往前找, 第一个与"最近一段(最后两笔)"有重叠的中枢=有效; 全部离开→None(新中枢未形成)
+        last_bi = bi[-2:] if len(bi) >= 2 else bi
+        seg_lo = min(b[2] for b in last_bi)
+        seg_hi = max(b[2] for b in last_bi)
+        for zi in range(len(zs_list) - 1, -1, -1):
+            z = zs_list[zi]
+            if seg_hi >= z["zd"] and seg_lo <= z["zg"]:
+                # 中枢确认日 = 第4笔(d笔)端点日期
+                i4 = z["bi_start"] + 3
+                since = merged[bi[i4][0]][0] if i4 < len(bi) else merged[bi[-1][0]][0]
+                return {"zd": round(z["zd"], 2), "zg": round(z["zg"], 2), "ext": z["ext"], "since": since}
+        return None
     return None
 
 
@@ -711,7 +719,9 @@ def analyze(symbol, window_days=7, as_of=None, light=False, include_all=False):
         "bars": len(rows),
         "bi_cnt": len(bi), "seg_cnt": len(segs), "zs_cnt": len(zs_list),
         "trend": trend,
-        "last_zhongshu": last_zhongshu_effective(bi, merged, zs_list),
+                "last_zhongshu": last_zhongshu_effective(bi, merged, zs_list),
+        "zhongshu_list": [{"start": merged[bi[z["bi_start"]][0]][0], "end": merged[bi[z["bi_end"]][0]][0],
+                           "zd": round(z["zd"], 2), "zg": round(z["zg"], 2), "ext": z["ext"]} for z in zs_list],
         "buy_sell": bs_out,
         "chain": [{"time": x[1], "type": x[0], "price": x[2]} for x in chain],
         "sell_chain": [{"time": x[1], "type": x[0], "price": x[2]} for x in sell_chain],
