@@ -281,6 +281,15 @@ def calc_score(typ, zd, zg, closes, highs, lows, vols, i):
         return round(max(0.0, min(100.0, s)), 1)
     if typ == '二买':
         # v3(案例证据驱动): 位置低+回调到位+回踩深+站均加分; 箱体大/突破猛惩罚(妖股/暴涨后接盘)
+        ma20 = sum(closes[i - 20:i + 1]) / 21
+        L60 = min(lows[i - 60:i + 1])
+        H60 = max(highs[i - 60:i + 1])
+        H40 = max(highs[i - 40:i + 1])
+        c0 = closes[i]
+        b5 = (c0 / ma20 - 1) * 100 if ma20 > 0 else 0
+        t1 = (c0 - H40) / H40 * 100 if H40 > 0 else 0
+        pos60 = (c0 - L60) / (H60 - L60) * 100 if H60 > L60 else 50
+        dist_lo = (c0 / L60 - 1) * 100 if L60 > 0 else 0
         H40p = max(highs[i - 80:i - 40]) if i >= 80 else H40
         t2 = (H40 / H40p - 1) * 100 if H40p > 0 else 0
         t5 = (H40 - L60) / L60 * 100 if L60 > 0 else 0
@@ -295,6 +304,13 @@ def calc_score(typ, zd, zg, closes, highs, lows, vols, i):
         return round(max(0.0, min(100.0, s)), 1)
     if typ == '三买':
         # v3(案例证据驱动): 位置低+回调到位+回踩深加分; 箱体大惩罚(妖股); 突破力度不再奖励(追高)
+        L60 = min(lows[i - 60:i + 1])
+        H60 = max(highs[i - 60:i + 1])
+        H40 = max(highs[i - 40:i + 1])
+        c0 = closes[i]
+        t1 = (c0 - H40) / H40 * 100 if H40 > 0 else 0
+        pos60 = (c0 - L60) / (H60 - L60) * 100 if H60 > L60 else 50
+        dist_lo = (c0 / L60 - 1) * 100 if L60 > 0 else 0
         t5 = (H40 - L60) / L60 * 100 if L60 > 0 else 0
         s = 50.0 + _lin(max(0.0, 100 - max(pos60, 0)), 0, 60, 0, 20)
         s += _lin(max(0.0, -dist_lo), 0, 30, 0, 10)
