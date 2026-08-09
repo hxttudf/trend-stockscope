@@ -218,23 +218,34 @@ def last_zhongshu_effective(bi, merged, zs_list):
         if zg > zd:
             return {"zd": round(zd, 2), "zg": round(zg, 2), "ext": len(tail), "since": merged[tail[0][0]][0]}
     if zs_list:
-        # 离开段检查(修复000032: 7/20暴跌13.87跌破旧中枢20-23.5, 旧中枢远离当前价致前端错位):
-        # 从最近的已确认中枢往前找, 第一个与"最近一段(最后两笔)"有重叠且近期形成(最近60根K线内)的中枢=有效
+        # 缠论结构判定(非日期hack): 中枢被"向下跌破下沿zd"即破坏结束(缠论: 跌破中枢下沿不回=中枢终结)
+        # 从最近的已确认中枢往前找, 第一个"未被向下破坏"且与最新段(最后两笔)重叠的中枢=有效
         last_bi = bi[-2:] if len(bi) >= 2 else bi
         seg_lo = min(b[2] for b in last_bi)
         seg_hi = max(b[2] for b in last_bi)
-        recent_start = merged[max(0, bi[-1][0] - 60)][0]  # 60根K线前的日期(近期限制, 防跨年中枢宽度错位)
         for zi in range(len(zs_list) - 1, -1, -1):
             z = zs_list[zi]
-            z_start = merged[bi[z["bi_start"]][0]][0]
-            if z_start < recent_start:
-                break
+            # 中枢破坏判定(缠论): 中枢范围内或其后的笔中, 出现bottom跌破下沿zd → 中枢已终结, 跳过
+            broken = False
+            for b in bi[z["bi_start"]:]:
+                if b[1] == 'bottom' and b[2] < z["zd"]:
+                    broken = True
+                    break
+            if broken:
+                continue
+            # 未破坏: 与最新段有重叠 → 有效(当前走势仍在该中枢内)
             if seg_hi >= z["zd"] and seg_lo <= z["zg"]:
-                # 中枢确认日 = 第4笔(d笔)端点日期
                 i4 = z["bi_start"] + 3
                 since = merged[bi[i4][0]][0] if i4 < len(bi) else merged[bi[-1][0]][0]
                 return {"zd": round(z["zd"], 2), "zg": round(z["zg"], 2), "ext": z["ext"], "since": since}
-    # 无近期有效中枢: 用最后2笔的价格区间作雏形参考(贴近当前价, 宽度=最近段) — 修复000032回退到2024老中枢致宽度2年
+            # 未破坏但最新段在区间上方(向上离开): 中枢上移/扩展阶段, 中枢仍有效
+            if seg_lo >= z["zg"]:
+                i4 = z["bi_start"] + 3
+                since = merged[bi[i4][0]][0] if i4 < len(bi) else merged[bi[-1][0]][0]
+                return {"zd": round(z["zd"], 2), "zg": round(z["zg"], 2), "ext": z["ext"], "since": since}
+            return {"zd": round(z["zd"], 2), "zg": round(z["zg"], 2), "ext": z["ext"],
+                    "since": merged[bi[z["bi_start"]][0]][0]}
+    # 全部中枢已向下破坏: 用最后2笔的价格区间作雏形(新中枢未确认, 贴近当前价) — 结构判定非时间窗
     if len(bi) >= 2:
         b1, b2 = bi[-2], bi[-1]
         lo, hi = min(b1[2], b2[2]), max(b1[2], b2[2])
