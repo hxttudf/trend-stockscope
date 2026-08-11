@@ -645,13 +645,13 @@ function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef, zsAsOf, onZ
         }
       }
       // 来源信号高亮(从选股/底部确认/缠论tab点击): 策略专属图标+颜色
-      const STRAT_MARKERS: Record<string, { text: string; color: string }> = {
+      const STRAT_MARKERS: Record<string, { text: string; color: string; shape?: string }> = {
         'premium_b': { text: '▲极B', color: '#ffd93d' },
         'premium_b2': { text: '⬡极B2', color: '#f0883e' },
         'premium_a': { text: '■极A', color: '#d4d4d4' },
         'original': { text: '●原', color: '#00d2d3' },
         'ultra_shrink': { text: '▼超缩', color: '#ff9ff3' },
-        'bottom_confirm': { text: '▲底确', color: '#2ea043' },
+        'bottom_confirm': { text: '底', color: '#2ea043', shape: 'triangle' },
       }
       // 来源信号高亮(从选股/底部确认/缠论tab点击): 策略专属图标+颜色 — 显示该策略全历史信号(不止点击当天)
       if (highlightSignal?.label) {
@@ -665,7 +665,7 @@ function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef, zsAsOf, onZ
             if (!kline.some(k => k.time === s.date)) return
             allMarkers.push({
               time: toBD(s.date), position: 'belowBar', color: sm.color,
-              shape: 'circle', text: sm.text.slice(0, 3), ov: false, isHighlight: true,
+              shape: (sm.shape || 'circle') as 'circle' | 'triangle', text: sm.text.slice(0, 3), ov: false, isHighlight: true,
             })
           })
       }
