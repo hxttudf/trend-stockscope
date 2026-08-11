@@ -651,7 +651,7 @@ function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef, zsAsOf, onZ
         'premium_a': { text: '■极A', color: '#d4d4d4' },
         'original': { text: '●原', color: '#00d2d3' },
         'ultra_shrink': { text: '▼超缩', color: '#ff9ff3' },
-        'bottom_confirm': { text: '底', color: '#2ea043', shape: 'triangle' },
+        'bottom_confirm': { text: '底', color: '#2ea043', shape: 'arrowUp' },
       }
       // 来源信号高亮(从选股/底部确认/缠论tab点击): 策略专属图标+颜色 — 显示该策略全历史信号(不止点击当天)
       if (highlightSignal?.label) {
@@ -665,7 +665,7 @@ function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef, zsAsOf, onZ
             if (!kline.some(k => k.time === s.date)) return
             allMarkers.push({
               time: toBD(s.date), position: 'belowBar', color: sm.color,
-              shape: (sm.shape || 'circle') as 'circle' | 'triangle', text: sm.text.slice(0, 3), ov: false, isHighlight: true,
+              shape: (sm.shape || 'circle') as 'circle' | 'arrowUp' | 'arrowDown', text: sm.text.slice(0, 3), ov: false, isHighlight: true,
             })
           })
       }
