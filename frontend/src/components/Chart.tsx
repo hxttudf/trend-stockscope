@@ -412,13 +412,14 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, b
     <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
       <div ref={containerRef} style={{ width: '100%', flex: 1, minHeight: 0, touchAction: 'manipulation' }} />
       <div ref={macdContainerRef} style={{ width: '100%', height: 120, flexShrink: 0, borderTop: '1px solid var(--border, #30363d)' }} />
-      {chartReady && chanOverlayReady && <ChanlunOverlay chanlun={chanlun ?? null} kline={kline} chartRef={chartRef} candleSeriesRef={candleSeriesRef} zsAsOf={zsAsOf ?? null} onZsRangeChange={onZsRangeChange} showAllZs={showAllZs ?? false} benchmarkTime={benchmarkTime} highlightSignal={highlightSignal} />}
+      {chartReady && chanOverlayReady && <ChanlunOverlay chanlun={chanlun ?? null} kline={kline} chartRef={chartRef} candleSeriesRef={candleSeriesRef} zsAsOf={zsAsOf ?? null} onZsRangeChange={onZsRangeChange} showAllZs={showAllZs ?? false} benchmarkTime={benchmarkTime} highlightSignal={highlightSignal} signals={signals} />}
     </div>
   )
 }
 
 // ═══ 缠论绘制(完整版): 线段折线 + 笔 + 中枢线 + 买卖点标记 ═══
-function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef, zsAsOf, onZsRangeChange, showAllZs, benchmarkTime, highlightSignal }: {
+function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef, zsAsOf, onZsRangeChange, showAllZs, benchmarkTime, highlightSignal, signals }: {
+  signals: { date: string; type: string; name: string }[]
   chanlun: ChanlunData | null
   kline: KlinePoint[]
   chartRef: React.RefObject<IChartApi | null>
@@ -652,16 +653,21 @@ function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef, zsAsOf, onZ
         'ultra_shrink': { text: '▼超缩', color: '#ff9ff3' },
         'bottom_confirm': { text: '▲底确', color: '#2ea043' },
       }
-      // 来源信号高亮(从选股/底部确认/缠论tab点击): 策略专属图标+颜色
-      if (highlightSignal?.date) {
-        const hIdx = kline.findIndex(k => k.time === highlightSignal.date)
-        if (hIdx >= 0) {
-          const sm = STRAT_MARKERS[highlightSignal.label] || { text: highlightSignal.label || '信号', color: '#ffffff' }
-          allMarkers.push({
-            time: toBD(highlightSignal.date), position: 'belowBar', color: sm.color,
-            shape: 'circle', text: sm.text.slice(0, 3), ov: false, isHighlight: true,
+      // 来源信号高亮(从选股/底部确认/缠论tab点击): 策略专属图标+颜色 — 显示该策略全历史信号(不止点击当天)
+      if (highlightSignal?.label) {
+        const sm = STRAT_MARKERS[highlightSignal.label] || { text: highlightSignal.label || '信号', color: '#ffffff' }
+        signals
+          .filter(s => {
+            const t = s.type.split(',')[0]
+            return t === highlightSignal.label || s.type.startsWith(highlightSignal.label + '_')
           })
-        }
+          .forEach(s => {
+            if (!kline.some(k => k.time === s.date)) return
+            allMarkers.push({
+              time: toBD(s.date), position: 'belowBar', color: sm.color,
+              shape: 'circle', text: sm.text.slice(0, 3), ov: false, isHighlight: true,
+            })
+          })
       }
       // 排序: 正常信号优先(时间倒序), ✗推翻信号靠后不挤占
       allMarkers.sort((a, b) => {
@@ -691,7 +697,7 @@ function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef, zsAsOf, onZ
         try { chartRef.current?.timeScale().unsubscribeVisibleLogicalRangeChange(renderVisibleMarkers2) } catch (e) { /* noop */ }
       }
     }
-  }, [chanlun, kline, chartRef, candleSeriesRef, zsAsOf, showAllZs, benchmarkTime, highlightSignal])
+  }, [chanlun, kline, chartRef, candleSeriesRef, zsAsOf, showAllZs, benchmarkTime, highlightSignal, signals])
 
   return null
 }

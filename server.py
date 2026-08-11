@@ -128,13 +128,13 @@ def _get_stock_signals(symbol):
     conn = db_conn(TREND_DB)
     cur = conn.cursor()
     rows = cur.execute(
-        "SELECT date, strategy_id, name FROM daily_picks WHERE symbol = ? ORDER BY date DESC LIMIT 50",
+        "SELECT date, strategy_id, name FROM daily_picks WHERE symbol = ? ORDER BY date DESC",
         (symbol,)
     ).fetchall()
     # 底部确认策略信号(买入+观察)
     bc_rows = cur.execute(
         "SELECT date, name, status FROM bottom_confirm_picks "
-        "WHERE symbol = ? AND status IN ('worth', 'watch') ORDER BY date DESC LIMIT 50",
+        "WHERE symbol = ? AND status IN ('worth', 'watch') ORDER BY date DESC",
         (symbol,)
     ).fetchall()
     conn.close()
