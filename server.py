@@ -54,7 +54,7 @@ def search_stocks():
     cur = conn.cursor()
     like = f"%{q}%"
     rows = cur.execute(
-        "SELECT DISTINCT symbol, name FROM stock_basics WHERE symbol LIKE ? OR name LIKE ? LIMIT 20",
+        "SELECT symbol, name FROM stock_basics WHERE symbol LIKE ? OR name LIKE ? GROUP BY symbol LIMIT 20",
         (like, like)
     ).fetchall()
     conn.close()
