@@ -797,6 +797,12 @@ export default function App() {
                         </span>
                       ))}
                       <span className="pick-tag">{p.dist_ma20?.toFixed(1)}%</span>
+                      {p.ret_pct != null && (
+                        <span className="pick-tag" title="信号日收盘→最新收盘"
+                          style={{ color: p.ret_pct >= 0 ? '#f85149' : '#3fb950', fontWeight: 600 }}>
+                          {p.ret_pct >= 0 ? '+' : ''}{p.ret_pct}%
+                        </span>
+                      )}
                     </div>
                   </div>
                 ))
@@ -961,6 +967,12 @@ export default function App() {
                       <span className="pick-tag">{p.streak}期</span>
                       <span className="pick-tag">{p.score.toFixed(0)}分</span>
                       <span className="pick-tag">{p.stage.slice(0, 1)}</span>
+                      {p.ret_pct != null && (
+                        <span className="pick-tag" title="信号日收盘→最新收盘"
+                          style={{ color: p.ret_pct >= 0 ? '#f85149' : '#3fb950', fontWeight: 600 }}>
+                          {p.ret_pct >= 0 ? '+' : ''}{p.ret_pct}%
+                        </span>
+                      )}
                     </div>
                   </div>
                 ))

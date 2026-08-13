@@ -200,6 +200,7 @@ def get_picks():
         d["strategy_id"] = d.pop("strategies")
         result.append(d)
     conn_seq.close()
+    result = _add_ret_pct(result)
     return jsonify(result)
 
 
@@ -541,6 +542,50 @@ def api_chanlun_dates():
 
 _sig_cache = {}  # (date,type,preview) -> (timestamp, json) 300s TTL
 
+
+def _add_ret_pct(items):
+    """给信号列表加'信号后涨跌幅'(信号日收盘→最新K线收盘, 前复权)
+    最新价: 更新日志表最新交易日一次范围查询(停牌fallback); 信号日价: 索引直查"""
+    try:
+        seq = db_conn(SEQUOIA_DB)
+        syms = list({it["symbol"] for it in items if it.get("date")})
+        latest = {}
+        if syms:
+            ph = ",".join("?" * len(syms))
+            ld = seq.execute("SELECT latest_date FROM kline_update_log ORDER BY id DESC LIMIT 1").fetchone()
+            latest_date = ld[0] if ld else seq.execute("SELECT MAX(date) FROM stock_daily").fetchone()[0]
+            for s, c in seq.execute(
+                    "SELECT symbol, close_qfq FROM stock_daily WHERE date=? AND symbol IN (%s) AND close_qfq>0" % ph,
+                    [latest_date] + syms).fetchall():
+                latest[s] = c
+            missing = [s for s in syms if s not in latest]
+            if missing:
+                mph = ",".join("?" * len(missing))
+                for s, c in seq.execute(
+                        "SELECT d.symbol, d.close_qfq FROM stock_daily d JOIN ("
+                        "SELECT symbol, MAX(date) m FROM stock_daily WHERE symbol IN (%s) AND close_qfq>0 GROUP BY symbol"
+                        ") x ON d.symbol=x.symbol AND d.date=x.m" % mph, missing).fetchall():
+                    latest[s] = c
+        sig_close = {}
+        if syms:
+            ph = ",".join("?" * len(syms))
+            dates = sorted({it["date"] for it in items if it.get("date")})
+            dph = ",".join("?" * len(dates)) if dates else "''"
+            for s, d, c in seq.execute(
+                    "SELECT symbol, date, close_qfq FROM stock_daily "
+                    "WHERE symbol IN (%s) AND date IN (%s) AND close_qfq>0" % (ph, dph),
+                    syms + dates).fetchall():
+                sig_close[(s, d)] = c
+        for it in items:
+            sc_ = sig_close.get((it.get("symbol"), it.get("date")))
+            lc = latest.get(it.get("symbol"))
+            it["ret_pct"] = round((lc / sc_ - 1) * 100, 1) if sc_ and lc else None
+        seq.close()
+    except Exception:
+        for it in items:
+            it["ret_pct"] = None
+    return items
+
 @app.route("/api/chanlun/signals")
 def api_chanlun_signals():
     """缠论信号列表: ?date=2026-07-30&type=三买 | type=二三买 时返回同股同日二买+三买重合"""
@@ -656,56 +701,7 @@ def api_chanlun_signals():
               "status": r[7] if len(r) > 7 else "ok",
               "strength": r[8] if len(r) > 8 else "neutral",
               "score": r[9] if len(r) > 9 else 50} for r in rows]
-    # 信号后涨跌幅: 信号日收盘 → 最新K线收盘 (批量查询, 本地SQLite毫秒级)
-    try:
-        seq = db_conn(SEQUOIA_DB)
-        syms = list({it["symbol"] for it in items})
-        latest = {}
-        if syms:
-            ph = ",".join("?" * len(syms))
-            # 最新交易日: 优先更新日志表, fallback MAX(date)(走索引2ms)
-            ld = seq.execute(
-                "SELECT latest_date FROM kline_update_log ORDER BY id DESC LIMIT 1").fetchone()
-            latest_date = ld[0] if ld else seq.execute(
-                "SELECT MAX(date) FROM stock_daily").fetchone()[0]
-            for s, c in seq.execute(
-                    "SELECT symbol, close_qfq FROM stock_daily WHERE date=? AND symbol IN (%s) AND close_qfq>0" % ph,
-                    [latest_date] + syms).fetchall():
-                latest[s] = c
-            # 停牌股fallback: 最新交易日无数据的, 个别查最近一根
-            missing = [s for s in syms if s not in latest]
-            if missing:
-                mph = ",".join("?" * len(missing))
-                for s, c in seq.execute(
-                        "SELECT d.symbol, d.close_qfq FROM stock_daily d JOIN ("
-                        "SELECT symbol, MAX(date) m FROM stock_daily WHERE symbol IN (%s) AND close_qfq>0 GROUP BY symbol"
-                        ") x ON d.symbol=x.symbol AND d.date=x.m" % mph, missing).fetchall():
-                    latest[s] = c
-        # 信号日收盘: 直接查(走idx_symbol_date, (symbol,date)唯一无需窗口)
-        sig_close = {}
-        if syms:
-            ph = ",".join("?" * len(syms))
-            dates = sorted({it["date"] for it in items if it["date"]})
-            dph = ",".join("?" * len(dates)) if dates else "''"
-            for s, d, c in seq.execute(
-                    "SELECT symbol, date, close_qfq FROM stock_daily "
-                    "WHERE symbol IN (%s) AND date IN (%s) AND close_qfq>0" % (ph, dph),
-                    syms + dates).fetchall():
-                sig_close[(s, d)] = c
-        for it in items:
-            try:
-                sc_ = sig_close.get((it["symbol"], it["date"]))
-                lat_c = latest.get(it["symbol"])
-                if sc_ and lat_c:
-                    it["ret_pct"] = round((lat_c / sc_ - 1) * 100, 1)
-                else:
-                    it["ret_pct"] = None
-            except Exception:
-                it["ret_pct"] = None
-        seq.close()
-    except Exception:
-        for it in items:
-            it["ret_pct"] = None
+    items = _add_ret_pct(items)
     order = {"strong": 0, "neutral": 1, "weak": 2}
     items.sort(key=lambda x: (order.get(x["strength"], 1), -(x.get("score") or 50), x["type"], x["symbol"]))
     out = json.dumps(items, ensure_ascii=False)
@@ -825,6 +821,7 @@ def get_bc_picks():
             d["name"] = real_name["name"]
         result.append(d)
     conn_seq.close()
+    result = _add_ret_pct(result)
     return jsonify(result)
 
 
