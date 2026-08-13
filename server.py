@@ -3,6 +3,7 @@ import os
 import sqlite3
 import json
 from datetime import datetime, timedelta
+import time
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 
@@ -538,6 +539,8 @@ def api_chanlun_dates():
     return json.dumps([{"date": r[0], "total": r[1]} for r in rows], ensure_ascii=False)
 
 
+_sig_cache = {}  # (date,type,preview) -> (timestamp, json) 300s TTL
+
 @app.route("/api/chanlun/signals")
 def api_chanlun_signals():
     """缠论信号列表: ?date=2026-07-30&type=三买 | type=二三买 时返回同股同日二买+三买重合"""
@@ -545,6 +548,10 @@ def api_chanlun_signals():
     typ = request.args.get("type", "")
     conn = db_conn(TREND_DB)
     preview = request.args.get("preview", "") == "1"
+    ck = (date, typ, preview)
+    hit = _sig_cache.get(ck)
+    if hit and time.time() - hit[0] < 300:
+        return hit[1]
     try:
         if preview:
             # 盘中预览: 未确认日期(preview状态)→预览表; 已确认日期→正式表
@@ -661,14 +668,24 @@ def api_chanlun_signals():
                     "SELECT symbol, close_qfq, ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY date DESC) rn "
                     "FROM stock_daily WHERE symbol IN (%s) AND close_qfq>0) WHERE rn=1" % ph, syms).fetchall():
                 latest[s] = c
+        # 信号日收盘: 一次批量查询(窗口函数取每symbol每date最后一行)
+        sig_close = {}
+        if syms:
+            ph = ",".join("?" * len(syms))
+            dates = sorted({it["date"] for it in items if it["date"]})
+            dph = ",".join("?" * len(dates)) if dates else "''"
+            for s, d, c in seq.execute(
+                    "SELECT symbol, date, close_qfq FROM ("
+                    "SELECT symbol, date, close_qfq, ROW_NUMBER() OVER (PARTITION BY symbol, date ORDER BY date DESC) rn "
+                    "FROM stock_daily WHERE symbol IN (%s) AND date IN (%s) AND close_qfq>0) WHERE rn=1" % (ph, dph),
+                    syms + dates).fetchall():
+                sig_close[(s, d)] = c
         for it in items:
             try:
-                sig_c = seq.execute(
-                    "SELECT close_qfq FROM stock_daily WHERE symbol=? AND date=? AND close_qfq>0 LIMIT 1",
-                    (it["symbol"], it["date"])).fetchone()
+                sc_ = sig_close.get((it["symbol"], it["date"]))
                 lat_c = latest.get(it["symbol"])
-                if sig_c and sig_c[0] and lat_c:
-                    it["ret_pct"] = round((lat_c / sig_c[0] - 1) * 100, 1)
+                if sc_ and lat_c:
+                    it["ret_pct"] = round((lat_c / sc_ - 1) * 100, 1)
                 else:
                     it["ret_pct"] = None
             except Exception:
@@ -679,7 +696,9 @@ def api_chanlun_signals():
             it["ret_pct"] = None
     order = {"strong": 0, "neutral": 1, "weak": 2}
     items.sort(key=lambda x: (order.get(x["strength"], 1), -(x.get("score") or 50), x["type"], x["symbol"]))
-    return json.dumps(items, ensure_ascii=False)
+    out = json.dumps(items, ensure_ascii=False)
+    _sig_cache[ck] = (time.time(), out)
+    return out
 
 
 # ── Stock basic info ──────────────────────────────────────────
