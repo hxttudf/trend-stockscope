@@ -664,20 +664,19 @@ def api_chanlun_signals():
         if syms:
             ph = ",".join("?" * len(syms))
             for s, c in seq.execute(
-                    "SELECT symbol, close_qfq FROM ("
-                    "SELECT symbol, close_qfq, ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY date DESC) rn "
-                    "FROM stock_daily WHERE symbol IN (%s) AND close_qfq>0) WHERE rn=1" % ph, syms).fetchall():
+                    "SELECT d.symbol, d.close_qfq FROM stock_daily d JOIN ("
+                    "SELECT symbol, MAX(date) m FROM stock_daily WHERE symbol IN (%s) AND close_qfq>0 GROUP BY symbol"
+                    ") x ON d.symbol=x.symbol AND d.date=x.m" % ph, syms).fetchall():
                 latest[s] = c
-        # 信号日收盘: 一次批量查询(窗口函数取每symbol每date最后一行)
+        # 信号日收盘: 直接查(走idx_symbol_date, (symbol,date)唯一无需窗口)
         sig_close = {}
         if syms:
             ph = ",".join("?" * len(syms))
             dates = sorted({it["date"] for it in items if it["date"]})
             dph = ",".join("?" * len(dates)) if dates else "''"
             for s, d, c in seq.execute(
-                    "SELECT symbol, date, close_qfq FROM ("
-                    "SELECT symbol, date, close_qfq, ROW_NUMBER() OVER (PARTITION BY symbol, date ORDER BY date DESC) rn "
-                    "FROM stock_daily WHERE symbol IN (%s) AND date IN (%s) AND close_qfq>0) WHERE rn=1" % (ph, dph),
+                    "SELECT symbol, date, close_qfq FROM stock_daily "
+                    "WHERE symbol IN (%s) AND date IN (%s) AND close_qfq>0" % (ph, dph),
                     syms + dates).fetchall():
                 sig_close[(s, d)] = c
         for it in items:
