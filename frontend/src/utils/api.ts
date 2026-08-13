@@ -40,6 +40,7 @@ export interface PickRecord {
   vol_ratio: number
   pct_20d: number
   buy_price: number
+  ret_pct?: number | null
 }
 
 export interface PickDateSummary {
