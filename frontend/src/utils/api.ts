@@ -67,6 +67,7 @@ export interface LaogaoPick {
   bottom_days: number
   vol_shrink: number
   streak: number
+  ret_pct?: number | null
   close_qfq: number
   ma20: number
   ma60: number
