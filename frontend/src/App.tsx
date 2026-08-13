@@ -232,18 +232,19 @@ export default function App() {
 
   // ── 缠论信号 ──
   useEffect(() => {
+    let cancelled = false
     const pv = chanlunPreview ? '&preview=1' : ''
     const q = chanlunTypeFilter ? `/stockscope/api/chanlun/dates?type=${encodeURIComponent(chanlunTypeFilter)}${pv}` : `/stockscope/api/chanlun/dates${pv ? '?preview=1' : ''}`
     fetch(q).then(r => r.json()).then((dates: { date: string; total: number }[]) => {
+      if (cancelled) return
       setChanlunDates(dates)
       if (dates.length > 0) {
-        if (!dates.find(d => d.date === selectedChanlunDate)) {
-          setSelectedChanlunDate(dates[0].date)
-        }
+        setSelectedChanlunDate(prev => (dates.find(d => d.date === prev) ? prev : dates[0].date))
       } else {
         setSelectedChanlunDate('')
       }
     })
+    return () => { cancelled = true }
   }, [chanlunTypeFilter, chanlunPreview])
 
   useEffect(() => {
@@ -257,7 +258,7 @@ export default function App() {
       })
     }
     return () => { cancelled = true }
-  }, [selectedChanlunDate, chanlunTypeFilter])
+  }, [selectedChanlunDate, chanlunTypeFilter, chanlunPreview])
 
   // Load K-line for current stock
   const loadStock = useCallback(async (symbol: string, name: string, signalDate?: string) => {
