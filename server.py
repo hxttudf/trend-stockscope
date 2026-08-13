@@ -649,6 +649,34 @@ def api_chanlun_signals():
               "status": r[7] if len(r) > 7 else "ok",
               "strength": r[8] if len(r) > 8 else "neutral",
               "score": r[9] if len(r) > 9 else 50} for r in rows]
+    # 信号后涨跌幅: 信号日收盘 → 最新K线收盘 (批量查询, 本地SQLite毫秒级)
+    try:
+        seq = db_conn(SEQUOIA_DB)
+        syms = list({it["symbol"] for it in items})
+        latest = {}
+        if syms:
+            ph = ",".join("?" * len(syms))
+            for s, c in seq.execute(
+                    "SELECT symbol, close_qfq FROM ("
+                    "SELECT symbol, close_qfq, ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY date DESC) rn "
+                    "FROM stock_daily WHERE symbol IN (%s) AND close_qfq>0) WHERE rn=1" % ph, syms).fetchall():
+                latest[s] = c
+        for it in items:
+            try:
+                sig_c = seq.execute(
+                    "SELECT close_qfq FROM stock_daily WHERE symbol=? AND date=? AND close_qfq>0 LIMIT 1",
+                    (it["symbol"], it["date"])).fetchone()
+                lat_c = latest.get(it["symbol"])
+                if sig_c and sig_c[0] and lat_c:
+                    it["ret_pct"] = round((lat_c / sig_c[0] - 1) * 100, 1)
+                else:
+                    it["ret_pct"] = None
+            except Exception:
+                it["ret_pct"] = None
+        seq.close()
+    except Exception:
+        for it in items:
+            it["ret_pct"] = None
     order = {"strong": 0, "neutral": 1, "weak": 2}
     items.sort(key=lambda x: (order.get(x["strength"], 1), -(x.get("score") or 50), x["type"], x["symbol"]))
     return json.dumps(items, ensure_ascii=False)

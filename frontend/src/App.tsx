@@ -910,6 +910,12 @@ export default function App() {
                           <span className="pick-tag" style={{ color: '#a371f7', borderColor: '#a371f7', fontStyle: 'italic' }}>未确认</span>
                         )}
                         <span className="pick-tag">{s.price?.toFixed(2)}</span>
+                        {s.ret_pct != null && (
+                          <span className="pick-tag" title="信号日收盘→最新收盘"
+                            style={{ color: s.ret_pct >= 0 ? '#f85149' : '#3fb950', fontWeight: 600 }}>
+                            {s.ret_pct >= 0 ? '+' : ''}{s.ret_pct}%
+                          </span>
+                        )}
                         {s.zd > 0 && <span className="pick-tag">{s.zd.toFixed(1)}~{s.zg.toFixed(1)}</span>}
                       </div>
                     </div>
