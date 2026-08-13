@@ -663,11 +663,24 @@ def api_chanlun_signals():
         latest = {}
         if syms:
             ph = ",".join("?" * len(syms))
+            # 最新交易日: 优先更新日志表, fallback MAX(date)(走索引2ms)
+            ld = seq.execute(
+                "SELECT latest_date FROM kline_update_log ORDER BY id DESC LIMIT 1").fetchone()
+            latest_date = ld[0] if ld else seq.execute(
+                "SELECT MAX(date) FROM stock_daily").fetchone()[0]
             for s, c in seq.execute(
-                    "SELECT d.symbol, d.close_qfq FROM stock_daily d JOIN ("
-                    "SELECT symbol, MAX(date) m FROM stock_daily WHERE symbol IN (%s) AND close_qfq>0 GROUP BY symbol"
-                    ") x ON d.symbol=x.symbol AND d.date=x.m" % ph, syms).fetchall():
+                    "SELECT symbol, close_qfq FROM stock_daily WHERE date=? AND symbol IN (%s) AND close_qfq>0" % ph,
+                    [latest_date] + syms).fetchall():
                 latest[s] = c
+            # 停牌股fallback: 最新交易日无数据的, 个别查最近一根
+            missing = [s for s in syms if s not in latest]
+            if missing:
+                mph = ",".join("?" * len(missing))
+                for s, c in seq.execute(
+                        "SELECT d.symbol, d.close_qfq FROM stock_daily d JOIN ("
+                        "SELECT symbol, MAX(date) m FROM stock_daily WHERE symbol IN (%s) AND close_qfq>0 GROUP BY symbol"
+                        ") x ON d.symbol=x.symbol AND d.date=x.m" % mph, missing).fetchall():
+                    latest[s] = c
         # 信号日收盘: 直接查(走idx_symbol_date, (symbol,date)唯一无需窗口)
         sig_close = {}
         if syms:
