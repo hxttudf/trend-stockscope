@@ -582,11 +582,11 @@ function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef, zsAsOf, onZ
       const tag = zsAsOf ? `截至${zsAsOf.date}` : '最新'
       try {
         const pl1 = candle.createPriceLine({
-          price: zs.zg, color: 'rgba(240,101,101,0.70)',
+          price: zs.zg, color: 'rgba(163,113,247,0.75)',
           lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: `中枢上 ${tag}(${zs.ext}段)`,
         })
         const pl2 = candle.createPriceLine({
-          price: zs.zd, color: 'rgba(80,180,120,0.70)',
+          price: zs.zd, color: 'rgba(88,166,255,0.75)',
           lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: '中枢下',
         })
         priceLinesRef.current = [pl1, pl2]
