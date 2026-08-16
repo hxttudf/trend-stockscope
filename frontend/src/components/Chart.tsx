@@ -522,7 +522,7 @@ function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef, zsAsOf, onZ
     // 全部历史中枢矩形(开关): 每中枢 上边+下边 青色虚线(lineWidth2) + 四角标记
     // 4.x限制: 同一series不允许同一天两点(画不了竖线), 用角点markers补足矩形感
     if (showAllZs && chanlun.zhongshu_list?.length) {
-      const zsColor = 'rgba(57,197,207,0.9)'
+      const zsColor = 'rgba(80,215,225,1)'
       for (const z of chanlun.zhongshu_list) {
         if (!z.start || !z.end || z.start === z.end) continue
         const t1 = toBD(z.start)
@@ -530,13 +530,13 @@ function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef, zsAsOf, onZ
         if (!t1 || !t2 || bdStr(t1 as Time) > bdStr(t2 as Time)) continue
         try {
           const up = chart.addSeries(LineSeries, {
-            color: zsColor, lineWidth: 2, lineStyle: 2,
+            color: zsColor, lineWidth: 3, lineStyle: 2,
             lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false,
           })
           up.setData([{ time: t1, value: z.zg }, { time: t2, value: z.zg }])
           seriesRef.current.push(up)
           const down = chart.addSeries(LineSeries, {
-            color: zsColor, lineWidth: 2, lineStyle: 2,
+            color: zsColor, lineWidth: 3, lineStyle: 2,
             lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false,
           })
           down.setData([{ time: t1, value: z.zd }, { time: t2, value: z.zd }])
@@ -558,15 +558,15 @@ function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef, zsAsOf, onZ
         const t2 = toBD(klineEnd)
         if (t1 && t2 && bdStr(t1 as Time) <= bdStr(t2 as Time)) {
           try {
-            const zsColor2 = 'rgba(240,165,60,0.9)'  // 雏形/最新中枢矩形: 橙色(与历史中枢青色区分)
+            const zsColor2 = 'rgba(255,180,70,1)'  // 雏形/最新中枢矩形: 橙色(与历史中枢青色区分)
             const up = chart.addSeries(LineSeries, {
-              color: zsColor2, lineWidth: 2, lineStyle: 2,
+              color: zsColor2, lineWidth: 3, lineStyle: 2,
               lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false,
             })
             up.setData([{ time: t1, value: lz.zg }, { time: t2, value: lz.zg }])
             seriesRef.current.push(up)
             const down = chart.addSeries(LineSeries, {
-              color: zsColor2, lineWidth: 2, lineStyle: 2,
+              color: zsColor2, lineWidth: 3, lineStyle: 2,
               lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false,
             })
             down.setData([{ time: t1, value: lz.zd }, { time: t2, value: lz.zd }])
