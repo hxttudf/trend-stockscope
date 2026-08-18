@@ -1,11 +1,18 @@
 """StockScope Backend — K线数据 + 自选股 + 每日选股 API"""
 import os
+import re
 import sqlite3
 import json
 from datetime import datetime, timedelta
 import time
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
+
+# 拼音首字母映射(启动时加载一次, 用于首字母搜索; 文件不存在则空dict, 不影响其他功能)
+try:
+    _pinyin_map = json.load(open(os.path.join(os.path.dirname(__file__), 'pinyin_map.json'), encoding='utf-8'))
+except Exception:
+    _pinyin_map = {}
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 BACKEND_DIR = BASE_DIR
@@ -51,6 +58,13 @@ def search_stocks():
     q = request.args.get("q", "").strip()
     if not q or len(q) < 1:
         return jsonify([])
+    # 首字母搜索: 纯字母输入走内存拼音映射(启动时加载一次, 线性扫描5544条<2ms, 不影响DB)
+    if re.fullmatch(r"[a-zA-Z]+", q):
+        ql = q.lower()
+        hits = [(s, v["name"]) for s, v in _pinyin_map.items()
+                if ql in v["initials"] or v["initials"].startswith(ql)]
+        hits.sort(key=lambda x: (x[1].startswith(ql) is False, x[0]))
+        return jsonify([{"symbol": s, "name": n} for s, n in hits[:20]])
     conn = db_conn(SEQUOIA_DB)
     cur = conn.cursor()
     like = f"%{q}%"
