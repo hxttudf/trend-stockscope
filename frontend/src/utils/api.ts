@@ -25,6 +25,8 @@ export interface KlineData {
   symbol: string
   kline: KlinePoint[]
   signals: Signal[]
+  mktcap?: number  // 总市值(万元)
+  nmc?: number     // 流通市值(万元)
 }
 
 export interface PickRecord {
