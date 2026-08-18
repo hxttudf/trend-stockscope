@@ -109,7 +109,7 @@ export default function App() {
   const [picks, setPicks] = useState<PickRecord[]>([])
   const [pickDates, setPickDates] = useState<{ date: string; total: number }[]>([])
   const [selectedPickDate, setSelectedPickDate] = useState('')
-  const [sidebarTab, setSidebarTab] = useState<'watchlist' | 'picks' | 'laogao' | 'chanlun'>('watchlist')
+  const [sidebarTab, setSidebarTab] = useState<'watchlist' | 'picks' | 'laogao' | 'chanlun' | 'chanlun_etf'>('watchlist')
   const [strategyFilter, setStrategyFilter] = useState('')  // '' = all
   const [laogaoPicks, setLaogaoPicks] = useState<import('./utils/api').LaogaoPick[]>([])
   const [laogaoDates, setLaogaoDates] = useState<{ date: string; total: number; worth_cnt: number }[]>([])
