@@ -554,10 +554,13 @@ def _add_ret_pct(items):
             ph = ",".join("?" * len(syms))
             ld = seq.execute("SELECT latest_date FROM kline_update_log ORDER BY id DESC LIMIT 1").fetchone()
             latest_date = ld[0] if ld else None
-            # 兜底: stock_daily实际最新日期可能比日志表新(日线拉取未写日志), 取较大者
-            sd_max = seq.execute("SELECT MAX(date) FROM stock_daily").fetchone()[0]
-            if latest_date is None or sd_max > latest_date:
-                latest_date = sd_max
+            # 性能优化: 正常情况下直接用日志表最新交易日(避免全表MAX)
+            # 仅当"信号日 > 日志日期"(日志stale/盘中新信号)时才查stock_daily实际MAX兜底
+            max_sig_date = max(it["date"] for it in items if it.get("date")) if any(it.get("date") for it in items) else ""
+            if latest_date is None or (max_sig_date and max_sig_date > latest_date):
+                sd_max = seq.execute("SELECT MAX(date) FROM stock_daily").fetchone()[0]
+                if latest_date is None or sd_max > latest_date:
+                    latest_date = sd_max
             for s, c in seq.execute(
                     "SELECT symbol, close_qfq FROM stock_daily WHERE date=? AND symbol IN (%s) AND close_qfq>0" % ph,
                     [latest_date] + syms).fetchall():
