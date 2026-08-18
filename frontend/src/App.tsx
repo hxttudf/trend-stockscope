@@ -745,8 +745,12 @@ export default function App() {
               🎯 底部确认 <span className="wl-count">{laogaoDates.length}天</span>
             </button>
           <button className={`wl-tab ${sidebarTab === 'chanlun' ? 'active' : ''}`}
-            onClick={() => setSidebarTab('chanlun')}>
+            onClick={() => { setSidebarTab('chanlun'); setChanlunEtf(false) }}>
               📐 缠论 <span className="wl-count">{chanlunDates.length}天</span>
+            </button>
+          <button className={`wl-tab ${sidebarTab === 'chanlun_etf' ? 'active' : ''}`}
+            onClick={() => { setSidebarTab('chanlun_etf'); setChanlunEtf(true) }}>
+              📐 缠论ETF <span className="wl-count">{chanlunDates.length}天</span>
             </button>
           </div>
 
@@ -837,7 +841,7 @@ export default function App() {
                 ))
               )}
             </div>
-          ) : sidebarTab === 'chanlun' ? (
+          ) : sidebarTab === 'chanlun' || sidebarTab === 'chanlun_etf' ? (
             <div className="watchlist-items">
               {/* 类型过滤 */}
               <div className="picks-strategy-bar" style={{ padding: '4px 8px', borderBottom: '1px solid var(--border)' }}>
@@ -845,11 +849,6 @@ export default function App() {
                   <span
                     className={`range-btn ${chanlunPreview ? 'active' : ''}`}
                     onClick={() => setChanlunPreview(!chanlunPreview)}
-                    title="只看ETF信号; 关闭=只看股票"
-                    style={{ fontSize: 11, padding: '2px 6px', cursor: 'pointer', color: chanlunEtf ? '#f0883e' : undefined, borderColor: chanlunEtf ? '#f0883e' : undefined }}>
-                    💼 ETF{chanlunEtf ? 'ON' : 'OFF'}
-                  </span>
-                  <span onClick={() => setChanlunPreview(!chanlunPreview)}
                     title="盘中预览: 用今日未收盘数据提前算信号(未确认); 关闭=正式已确认信号"
                     style={{ fontSize: 11, padding: '2px 6px', cursor: 'pointer', color: chanlunPreview ? '#a371f7' : undefined, borderColor: chanlunPreview ? '#a371f7' : undefined }}>
                     🕐 盘中{chanlunPreview ? 'ON' : 'OFF'}
