@@ -639,6 +639,11 @@ export default function App() {
                 总市值 {(kline.mktcap / 10000).toFixed(1)}亿
               </span>
             ) : null}
+            {kline?.nmc ? (
+              <span style={{ fontSize: 12, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                流通 {(kline.nmc / 10000).toFixed(1)}亿
+              </span>
+            ) : null}
             <span ref={priceRef} className="price">--</span>
             <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>涨跌</span>
             <span ref={changeRef} className="change"></span>
