@@ -634,6 +634,11 @@ export default function App() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, overflow: 'hidden', flexWrap: 'nowrap', whiteSpace: 'nowrap' }}>
             <span className="symbol">{currentStock.symbol}</span>
             <span className="name">{currentStock.name}</span>
+            {kline?.mktcap ? (
+              <span style={{ fontSize: 12, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                总市值 {(kline.mktcap / 10000).toFixed(1)}亿
+              </span>
+            ) : null}
             <span ref={priceRef} className="price">--</span>
             <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>涨跌</span>
             <span ref={changeRef} className="change"></span>

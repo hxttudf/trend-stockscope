@@ -87,6 +87,10 @@ def get_kline(symbol):
             (symbol,)
         ).fetchall()
     
+    # 市值(总市值/流通市值, 万元): 最新一条 basics (须在conn.close前查询)
+    basic = cur.execute(
+        "SELECT mktcap, nmc FROM stock_basics WHERE symbol=? ORDER BY date DESC LIMIT 1", (symbol,)
+    ).fetchone()
     conn.close()
     
     kline = []
@@ -121,7 +125,8 @@ def get_kline(symbol):
     # Get signal markers from daily_picks (both local and trend_picks)
     signals = _get_stock_signals(symbol)
     
-    return jsonify({"symbol": symbol, "kline": kline, "signals": signals})
+    return jsonify({"symbol": symbol, "kline": kline, "signals": signals,
+                    "mktcap": basic[0] if basic else None, "nmc": basic[1] if basic else None})
 
 
 def _get_stock_signals(symbol):
