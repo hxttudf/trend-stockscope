@@ -39,7 +39,9 @@ interface ChartProps {
   chanlun?: ChanlunData | null
   zsAsOf?: { date: string; zd: number; zg: number; ext: number; since?: string } | null  // 动态中枢(视角历史时回放)
   onZsRangeChange?: (date: string) => void  // 视角最右日期变化(空串=回到最新)
-  showAllZs?: boolean  // 显示全部历史中枢(矩形框)
+  showAllZs?: boolean
+  showTrend?: boolean   // 显示趋势信号
+  showBottom?: boolean  // 显示底部信号
 }
 const COLORS = {
   bg: '#0d1117',
@@ -75,7 +77,7 @@ const bdStr = (t: Time | string): string => {
 
 export default memo(Chart)
 
-function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, benchmarkTime, highlightSignal, focusDate, chanlun, zsAsOf, onZsRangeChange, showAllZs }: ChartProps) {
+function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, benchmarkTime, highlightSignal, focusDate, chanlun, zsAsOf, onZsRangeChange, showAllZs, showTrend, showBottom }: ChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const macdContainerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
@@ -412,13 +414,13 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, b
     <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
       <div ref={containerRef} style={{ width: '100%', flex: 1, minHeight: 0, touchAction: 'manipulation' }} />
       <div ref={macdContainerRef} style={{ width: '100%', height: 120, flexShrink: 0, borderTop: '1px solid var(--border, #30363d)' }} />
-      {chartReady && chanOverlayReady && <ChanlunOverlay chanlun={chanlun ?? null} kline={kline} chartRef={chartRef} candleSeriesRef={candleSeriesRef} zsAsOf={zsAsOf ?? null} onZsRangeChange={onZsRangeChange} showAllZs={showAllZs ?? false} benchmarkTime={benchmarkTime} highlightSignal={highlightSignal} signals={signals} />}
+      {chartReady && chanOverlayReady && <ChanlunOverlay chanlun={chanlun ?? null} kline={kline} chartRef={chartRef} candleSeriesRef={candleSeriesRef} zsAsOf={zsAsOf ?? null} onZsRangeChange={onZsRangeChange} showAllZs={showAllZs ?? false} showTrend={showTrend ?? false} showBottom={showBottom ?? false} benchmarkTime={benchmarkTime} highlightSignal={highlightSignal} signals={signals} />}
     </div>
   )
 }
 
 // ═══ 缠论绘制(完整版): 线段折线 + 笔 + 中枢线 + 买卖点标记 ═══
-function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef, zsAsOf, onZsRangeChange, showAllZs, benchmarkTime, highlightSignal, signals }: {
+function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef, zsAsOf, onZsRangeChange, showAllZs, showTrend, showBottom, benchmarkTime, highlightSignal, signals }: {
   signals: { date: string; type: string; name: string }[]
   chanlun: ChanlunData | null
   kline: KlinePoint[]
@@ -429,6 +431,8 @@ function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef, zsAsOf, onZ
   highlightSignal?: { date: string; label: string } | null
   onZsRangeChange?: (date: string) => void
   showAllZs?: boolean
+  showTrend?: boolean
+  showBottom?: boolean
 }) {
   const seriesRef = useRef<ISeriesApi<'Line'>[]>([])
   const markersApiRef = useRef<any>(null)
@@ -652,6 +656,32 @@ function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef, zsAsOf, onZ
         'original': { text: '●原', color: '#00d2d3' },
         'ultra_shrink': { text: '▼超缩', color: '#ff9ff3' },
         'bottom_confirm': { text: '▲底', color: '#2ea043' },
+      }
+      // 「趋」按钮: 显示全部趋势信号(daily_picks, 非bottom_confirm类型)
+      if (showTrend) {
+        signals
+          .filter(s => !s.type.startsWith('bottom_confirm'))
+          .forEach(s => {
+            if (!kline.some(k => k.time === s.date)) return
+            const sm = STRAT_MARKERS[s.type] || { text: '趋', color: '#8892b0' }
+            allMarkers.push({
+              time: toBD(s.date), position: 'belowBar', color: sm.color,
+              shape: (sm.shape || 'circle') as 'circle' | 'arrowUp' | 'arrowDown', text: sm.text.slice(0, 3), ov: false, isHighlight: true,
+            })
+          })
+      }
+      // 「底」按钮: 显示全部底部确认信号(bottom_confirm)
+      if (showBottom) {
+        signals
+          .filter(s => s.type.startsWith('bottom_confirm'))
+          .forEach(s => {
+            if (!kline.some(k => k.time === s.date)) return
+            const sm = STRAT_MARKERS[s.type] || { text: '底', color: '#2ea043' }
+            allMarkers.push({
+              time: toBD(s.date), position: 'belowBar', color: sm.color,
+              shape: (sm.shape || 'circle') as 'circle' | 'arrowUp' | 'arrowDown', text: sm.text.slice(0, 3), ov: false, isHighlight: true,
+            })
+          })
       }
       // 来源信号高亮(从选股/底部确认/缠论tab点击): 策略专属图标+颜色 — 显示该策略全历史信号(不止点击当天)
       if (highlightSignal?.label) {

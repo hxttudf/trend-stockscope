@@ -123,6 +123,8 @@ export default function App() {
   const [measureMode, setMeasureMode] = useState(false)
   const [chanlunMode, setChanlunMode] = useState(true)  // 默认选中缠(笔/中枢/买卖点)
   const [showAllZs, setShowAllZs] = useState(false)  // 显示全部历史中枢(矩形框)
+  const [showTrend, setShowTrend] = useState(false)   // 显示趋势信号(daily_picks)
+  const [showBottom, setShowBottom] = useState(false)  // 显示底部信号(bottom_confirm)
   const [chanlunData, setChanlunData] = useState<any>(null)
   const [zsAsOf, setZsAsOf] = useState<any>(null)  // 动态中枢: {date, zd, zg, ext, since} 视角历史时回放当时中枢
   const zsSeq = useRef(0)  // 动态中枢请求独立序号(防旧股票/旧日期响应覆盖)
@@ -594,6 +596,18 @@ export default function App() {
             title="中枢显示开关(青色上下沿线+矩形框)">
             枢
           </button>
+          <button className={`toolbar-btn ${showTrend ? 'active' : ''}`}
+            onClick={() => setShowTrend(s => !s)}
+            style={{ fontSize: 11, padding: '2px 6px' }}
+            title="趋势信号显示开关(选股策略标记)">
+            趋
+          </button>
+          <button className={`toolbar-btn ${showBottom ? 'active' : ''}`}
+            onClick={() => setShowBottom(s => !s)}
+            style={{ fontSize: 11, padding: '2px 6px' }}
+            title="底部信号显示开关(底部确认策略标记)">
+            底
+          </button>
 
           <div className="range-group">
             {RANGES.map(r => (
@@ -684,6 +698,8 @@ export default function App() {
               zsAsOf={zsAsOf}
               onZsRangeChange={loadZsAsOf}
               showAllZs={showAllZs}
+              showTrend={showTrend}
+              showBottom={showBottom}
             />
             </ChartErrorBoundary>
             {(!currentStock || !kline) && (
