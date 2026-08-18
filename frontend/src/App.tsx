@@ -238,7 +238,9 @@ export default function App() {
     let cancelled = false
     const pv = chanlunPreview ? '&preview=1' : ''
     const ev = chanlunEtf ? '&etf=1' : ''
-    const q = chanlunTypeFilter ? `/stockscope/api/chanlun/dates?type=${encodeURIComponent(chanlunTypeFilter)}${pv}${ev}` : `/stockscope/api/chanlun/dates${pv ? '?preview=1' : ''}${ev}`
+    const q = chanlunTypeFilter
+      ? `/stockscope/api/chanlun/dates?type=${encodeURIComponent(chanlunTypeFilter)}${pv}${ev}`
+      : `/stockscope/api/chanlun/dates${(pv || ev) ? '?' + [pv.replace(/^&/, ''), ev.replace(/^&/, '')].filter(Boolean).join('&') : ''}`
     fetch(q).then(r => r.json()).then((dates: { date: string; total: number }[]) => {
       if (cancelled) return
       setChanlunDates(dates)
