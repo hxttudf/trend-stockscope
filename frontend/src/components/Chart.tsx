@@ -727,7 +727,7 @@ function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef, zsAsOf, onZ
         try { chartRef.current?.timeScale().unsubscribeVisibleLogicalRangeChange(renderVisibleMarkers2) } catch (e) { /* noop */ }
       }
     }
-  }, [chanlun, kline, chartRef, candleSeriesRef, zsAsOf, showAllZs, benchmarkTime, highlightSignal, signals])
+  }, [chanlun, kline, chartRef, candleSeriesRef, zsAsOf, showAllZs, showTrend, showBottom, benchmarkTime, highlightSignal, signals])
 
   return null
 }
