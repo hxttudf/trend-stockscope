@@ -58,11 +58,13 @@ def search_stocks():
     q = request.args.get("q", "").strip()
     if not q or len(q) < 1:
         return jsonify([])
-    # 首字母搜索: 纯字母输入走内存拼音映射(启动时加载一次, 线性扫描5544条<2ms, 不影响DB)
+    # 拼音搜索: 纯字母输入走内存映射(启动时加载一次, 线性扫描5544条<2ms, 不影响DB)
+    # 匹配: 首字母(wsxx) / 全拼(weishengxinxi) / 全拼前缀(weisheng)
     if re.fullmatch(r"[a-zA-Z]+", q):
         ql = q.lower()
         hits = [(s, v["name"]) for s, v in _pinyin_map.items()
-                if ql in v["initials"] or v["initials"].startswith(ql)]
+                if ql in v["initials"] or ql in v.get("full", "")
+                or v["initials"].startswith(ql) or v.get("full", "").startswith(ql)]
         hits.sort(key=lambda x: (x[1].startswith(ql) is False, x[0]))
         return jsonify([{"symbol": s, "name": n} for s, n in hits[:20]])
     conn = db_conn(SEQUOIA_DB)
