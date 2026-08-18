@@ -561,7 +561,7 @@ def api_chanlun_dates():
     return json.dumps([{"date": r[0], "total": r[1]} for r in rows], ensure_ascii=False)
 
 
-_sig_cache = {}  # (date,type,preview) -> (timestamp, json) 300s TTL
+_sig_cache = {}  # (date,type,preview,etf) -> (timestamp, json) 300s TTL
 
 
 def _add_ret_pct(items):
@@ -621,7 +621,7 @@ def api_chanlun_signals():
     typ = request.args.get("type", "")
     conn = db_conn(TREND_DB)
     preview = request.args.get("preview", "") == "1"
-    ck = (date, typ, preview)
+    ck = (date, typ, preview, request.args.get("etf", "0"))
     hit = _sig_cache.get(ck)
     if hit and time.time() - hit[0] < 300:
         return hit[1]
