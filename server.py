@@ -446,13 +446,22 @@ def _w30_list(conn, date):
 
 
 # ── 缠论信号(静态路由必须先于 /api/chanlun/<symbol>, 否则被当作symbol) ──
+def _etf_sym_cond(col="symbol"):
+    """ETF symbol SQL条件: 5/15/16开头"""
+    return f"({col} LIKE '5%' OR {col} LIKE '15%' OR {col} LIKE '16%')"
+
+
 @app.route("/api/chanlun/dates")
 def api_chanlun_dates():
-    """缠论信号日期列表: ?type=三买 时只统计该类型; type=二三买 统计重合信号"""
+    """缠论信号日期列表: ?type=三买 时只统计该类型; type=二三买 统计重合信号; etf=1只看ETF日期"""
     conn = db_conn(TREND_DB)
     typ = request.args.get("type", "")
     preview = request.args.get("preview", "") == "1"
+    etf = request.args.get("etf", "0") == "1"
+    # ETF/股票信号日期集合(供日期列表过滤: etf=1只留ETF日期; etf=0去掉纯ETF日期)
     try:
+        etf_dates = {r[0] for r in conn.execute("SELECT DISTINCT signal_date FROM chanlun_signals WHERE " + _etf_sym_cond())}
+        stock_dates = {r[0] for r in conn.execute("SELECT DISTINCT signal_date FROM chanlun_signals WHERE NOT " + _etf_sym_cond())}
         if preview:
             # 盘中预览: 正式表(已确认) + 未确认增量(preview_signals的preview状态日期)
             pv_dates = [r[0] for r in conn.execute(
@@ -475,29 +484,30 @@ def api_chanlun_dates():
                 for d, n in rows + pv_rows:
                     merged[d] = max(merged.get(d, 0), n)
                 out = sorted(merged.items(), key=lambda x: x[0], reverse=True)[:60]
+                out = [(d, n) for d, n in out if (d in etf_dates if etf else d in stock_dates)]
                 return json.dumps([{"date": d, "total": n} for d, n in out], ensure_ascii=False)
             if typ == "二三买":
                 rows = conn.execute(
                     "SELECT a.signal_date, COUNT(DISTINCT a.symbol) FROM chanlun_signals a "
                     "JOIN chanlun_signals b ON a.symbol=b.symbol AND a.signal_date=b.signal_date "
                     "WHERE a.status='ok' AND b.status='ok' AND a.signal_type='二买' AND b.signal_type='三买' "
-                    "GROUP BY a.signal_date ORDER BY a.signal_date DESC LIMIT 60").fetchall()
+                    "GROUP BY a.signal_date ORDER BY a.signal_date DESC LIMIT 120").fetchall()
             elif typ.lower() == "d3":
                 rows = conn.execute(
                     "SELECT signal_date, COUNT(*) FROM chanlun_signals WHERE d3=1 AND status='ok' "
-                    "GROUP BY signal_date ORDER BY signal_date DESC LIMIT 60").fetchall()
+                    "GROUP BY signal_date ORDER BY signal_date DESC LIMIT 120").fetchall()
             elif typ.lower() == "w30":
                 rows = conn.execute(
                     "SELECT signal_date, COUNT(*) FROM chanlun_signals WHERE w30=1 AND status='ok' "
-                    "GROUP BY signal_date ORDER BY signal_date DESC LIMIT 60").fetchall()
+                    "GROUP BY signal_date ORDER BY signal_date DESC LIMIT 120").fetchall()
             elif typ:
                 rows = conn.execute(
                     "SELECT signal_date, COUNT(*) FROM chanlun_signals WHERE signal_type=? AND status='ok' "
-                    "GROUP BY signal_date ORDER BY signal_date DESC LIMIT 60", (typ,)).fetchall()
+                    "GROUP BY signal_date ORDER BY signal_date DESC LIMIT 120", (typ,)).fetchall()
             else:
                 rows = conn.execute(
                     "SELECT signal_date, COUNT(*) FROM chanlun_signals WHERE status='ok' "
-                    "GROUP BY signal_date ORDER BY signal_date DESC LIMIT 60").fetchall()
+                    "GROUP BY signal_date ORDER BY signal_date DESC LIMIT 120").fetchall()
             # 用预览数量覆盖未确认日期(8/3、8/4)
             if pv_dates:
                 out = []
@@ -531,33 +541,34 @@ def api_chanlun_dates():
                 "SELECT a.signal_date, COUNT(DISTINCT a.symbol) FROM chanlun_signals a "
                 "JOIN chanlun_signals b ON a.symbol=b.symbol AND a.signal_date=b.signal_date "
                 "WHERE a.status='ok' AND b.status='ok' AND a.signal_type='二买' AND b.signal_type='三买' "
-                "GROUP BY a.signal_date ORDER BY a.signal_date DESC LIMIT 60").fetchall()
+                "GROUP BY a.signal_date ORDER BY a.signal_date DESC LIMIT 120").fetchall()
         elif typ == "二三卖":
             rows = conn.execute(
                 "SELECT a.signal_date, COUNT(DISTINCT a.symbol) FROM chanlun_signals a "
                 "JOIN chanlun_signals b ON a.symbol=b.symbol AND a.signal_date=b.signal_date "
                 "WHERE a.status='ok' AND b.status='ok' AND a.signal_type='二卖' AND b.signal_type='三卖' "
-                "GROUP BY a.signal_date ORDER BY a.signal_date DESC LIMIT 60").fetchall()
+                "GROUP BY a.signal_date ORDER BY a.signal_date DESC LIMIT 120").fetchall()
         elif typ.lower() == "w30":
             # W30: worth确认后30天内的缠论买点(标记列) — 最近60个日期
             rows = conn.execute(
                 "SELECT signal_date, COUNT(*) FROM chanlun_signals WHERE w30=1 AND status='ok' "
-                "GROUP BY signal_date ORDER BY signal_date DESC LIMIT 60").fetchall()
+                "GROUP BY signal_date ORDER BY signal_date DESC LIMIT 120").fetchall()
         elif typ.lower() == "d3":
             # D3: 二买+老高5条件(标记列) — 最近60个日期
             rows = conn.execute(
                 "SELECT signal_date, COUNT(*) FROM chanlun_signals WHERE d3=1 AND status='ok' "
-                "GROUP BY signal_date ORDER BY signal_date DESC LIMIT 60").fetchall()
+                "GROUP BY signal_date ORDER BY signal_date DESC LIMIT 120").fetchall()
         elif typ:
             rows = conn.execute(
                 "SELECT signal_date, COUNT(*) FROM chanlun_signals WHERE signal_type=? AND status='ok' "
-                "GROUP BY signal_date ORDER BY signal_date DESC LIMIT 60", (typ,)).fetchall()
+                "GROUP BY signal_date ORDER BY signal_date DESC LIMIT 120", (typ,)).fetchall()
         else:
             rows = conn.execute(
                 "SELECT signal_date, COUNT(*) FROM chanlun_signals WHERE status='ok' GROUP BY signal_date "
-                "ORDER BY signal_date DESC LIMIT 60").fetchall()
+                "ORDER BY signal_date DESC LIMIT 120").fetchall()
     except Exception:
         return json.dumps([])
+    rows = [(d, n) for d, n in rows if (d in etf_dates if etf else d in stock_dates)]
     return json.dumps([{"date": r[0], "total": r[1]} for r in rows], ensure_ascii=False)
 
 

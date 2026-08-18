@@ -223,7 +223,7 @@ body {
 
 /* ── Watchlist Sidebar ──────────────────────────────────── */
 .watchlist-panel {
-  width: 220px;
+  width: 260px;
   background: var(--bg-secondary);
   border-left: 1px solid var(--border);
   display: flex;
