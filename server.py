@@ -729,6 +729,12 @@ def api_chanlun_signals():
               "status": r[7] if len(r) > 7 else "ok",
               "strength": r[8] if len(r) > 8 else "neutral",
               "score": r[9] if len(r) > 9 else 50} for r in rows]
+    # ETF过滤: etf=1只看ETF(5/15/16开头); 默认排除ETF(缠论tab保持股票视图)
+    etf = request.args.get("etf", "0") == "1"
+    if etf:
+        items = [it for it in items if it["symbol"][:2] in ("51", "15", "16", "56", "58") or it["symbol"].startswith("5")]
+    else:
+        items = [it for it in items if not (it["symbol"][:2] in ("51", "15", "16", "56", "58") or it["symbol"].startswith("5"))]
     items = _add_ret_pct(items)
     order = {"strong": 0, "neutral": 1, "weak": 2}
     items.sort(key=lambda x: (order.get(x["strength"], 1), -(x.get("score") or 50), x["type"], x["symbol"]))

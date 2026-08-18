@@ -119,6 +119,7 @@ export default function App() {
   const [selectedChanlunDate, setSelectedChanlunDate] = useState('')
   const [chanlunTypeFilter, setChanlunTypeFilter] = useState('')
   const [chanlunPreview, setChanlunPreview] = useState(false)  // 盘中预览模式
+  const [chanlunEtf, setChanlunEtf] = useState(false)  // 缠论tab: 只看ETF信号
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null)
   const [measureMode, setMeasureMode] = useState(false)
   const [chanlunMode, setChanlunMode] = useState(true)  // 默认选中缠(笔/中枢/买卖点)
@@ -236,7 +237,8 @@ export default function App() {
   useEffect(() => {
     let cancelled = false
     const pv = chanlunPreview ? '&preview=1' : ''
-    const q = chanlunTypeFilter ? `/stockscope/api/chanlun/dates?type=${encodeURIComponent(chanlunTypeFilter)}${pv}` : `/stockscope/api/chanlun/dates${pv ? '?preview=1' : ''}`
+    const ev = chanlunEtf ? '&etf=1' : ''
+    const q = chanlunTypeFilter ? `/stockscope/api/chanlun/dates?type=${encodeURIComponent(chanlunTypeFilter)}${pv}${ev}` : `/stockscope/api/chanlun/dates${pv ? '?preview=1' : ''}${ev}`
     fetch(q).then(r => r.json()).then((dates: { date: string; total: number }[]) => {
       if (cancelled) return
       setChanlunDates(dates)
@@ -247,20 +249,20 @@ export default function App() {
       }
     })
     return () => { cancelled = true }
-  }, [chanlunTypeFilter, chanlunPreview])
+  }, [chanlunTypeFilter, chanlunPreview, chanlunEtf])
 
   useEffect(() => {
     let cancelled = false
     if (selectedChanlunDate) {
       setChanlunSignals([])
       const pv = chanlunPreview ? '&preview=1' : ''
-      const q = `/stockscope/api/chanlun/signals?date=${selectedChanlunDate}${chanlunTypeFilter ? `&type=${encodeURIComponent(chanlunTypeFilter)}` : ''}${pv}`
+      const q = `/stockscope/api/chanlun/signals?date=${selectedChanlunDate}${chanlunTypeFilter ? `&type=${encodeURIComponent(chanlunTypeFilter)}` : ''}${pv}${chanlunEtf ? '&etf=1' : ''}`
       fetch(q).then(r => r.json()).then(data => {
         if (!cancelled) setChanlunSignals(data)
       })
     }
     return () => { cancelled = true }
-  }, [selectedChanlunDate, chanlunTypeFilter, chanlunPreview])
+  }, [selectedChanlunDate, chanlunTypeFilter, chanlunPreview, chanlunEtf])
 
   // Load K-line for current stock
   const loadStock = useCallback(async (symbol: string, name: string, signalDate?: string) => {
@@ -843,6 +845,11 @@ export default function App() {
                   <span
                     className={`range-btn ${chanlunPreview ? 'active' : ''}`}
                     onClick={() => setChanlunPreview(!chanlunPreview)}
+                    title="只看ETF信号; 关闭=只看股票"
+                    style={{ fontSize: 11, padding: '2px 6px', cursor: 'pointer', color: chanlunEtf ? '#f0883e' : undefined, borderColor: chanlunEtf ? '#f0883e' : undefined }}>
+                    💼 ETF{chanlunEtf ? 'ON' : 'OFF'}
+                  </span>
+                  <span onClick={() => setChanlunPreview(!chanlunPreview)}
                     title="盘中预览: 用今日未收盘数据提前算信号(未确认); 关闭=正式已确认信号"
                     style={{ fontSize: 11, padding: '2px 6px', cursor: 'pointer', color: chanlunPreview ? '#a371f7' : undefined, borderColor: chanlunPreview ? '#a371f7' : undefined }}>
                     🕐 盘中{chanlunPreview ? 'ON' : 'OFF'}
