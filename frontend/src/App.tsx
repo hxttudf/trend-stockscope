@@ -746,13 +746,13 @@ export default function App() {
             onClick={() => setSidebarTab('laogao')}>
               🎯 底部确认 <span className="wl-count">{laogaoDates.length}天</span>
             </button>
-          <button className={`wl-tab ${sidebarTab === 'chanlun' ? 'active' : ''}`}
-            onClick={() => { setSidebarTab('chanlun'); setChanlunEtf(false) }}>
-              📐 缠论 <span className="wl-count">{chanlunDates.length}天</span>
-            </button>
           <button className={`wl-tab ${sidebarTab === 'chanlun_etf' ? 'active' : ''}`}
             onClick={() => { setSidebarTab('chanlun_etf'); setChanlunEtf(true) }}>
               📐 缠论ETF <span className="wl-count">{chanlunDates.length}天</span>
+            </button>
+          <button className={`wl-tab ${sidebarTab === 'chanlun' ? 'active' : ''}`}
+            onClick={() => { setSidebarTab('chanlun'); setChanlunEtf(false) }}>
+              📐 缠论 <span className="wl-count">{chanlunDates.length}天</span>
             </button>
           </div>
 
