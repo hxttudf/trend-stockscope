@@ -221,7 +221,7 @@ def get_picks():
         d["strategy_id"] = d.pop("strategies")
         result.append(d)
     conn_seq.close()
-    result = _add_ret_pct(result)
+    result = _add_ret_pct(result, buy_mode='same_day')
     return jsonify(result)
 
 
@@ -584,8 +584,9 @@ def api_chanlun_dates():
 _sig_cache = {}  # (date,type,preview,etf) -> (timestamp, json) 300s TTL
 
 
-def _add_ret_pct(items):
-    """给信号列表加'信号后涨跌幅'(信号日收盘→最新K线收盘, 前复权)
+def _add_ret_pct(items, buy_mode='t1'):
+    """给信号列表加'信号后涨跌幅'(前复权)
+    buy_mode='t1': 买入基准=信号日T+1收盘(缠论, T+1确认→次日价); 'same_day': 基准=信号日当日收盘(选股/底部确认, 当日出信号)
     最新价: 更新日志表最新交易日一次范围查询(停牌fallback); 信号日价: 索引直查"""
     try:
         seq = db_conn(SEQUOIA_DB)
@@ -615,6 +616,7 @@ def _add_ret_pct(items):
                         ") x ON d.symbol=x.symbol AND d.date=x.m" % mph, missing).fetchall():
                     latest[s] = c
         sig_close = {}
+        t1_price = {}
         if syms:
             ph = ",".join("?" * len(syms))
             dates = sorted({it["date"] for it in items if it.get("date")})
@@ -628,18 +630,20 @@ def _add_ret_pct(items):
                 sig_close[(s, d)] = c
             # T+1买入价: 信号日之后(>date)第一根有收盘的K线, 一次范围查询按(symbol,date)索引取
             t1_price = {}
-            min_d = min(dates) if dates else ""
-            for s, d, c in seq.execute(
-                    "WITH t AS (SELECT symbol, date, close_qfq, ROW_NUMBER() OVER "
-                    "(PARTITION BY symbol ORDER BY date) rn FROM stock_daily "
-                    "WHERE symbol IN (%s) AND date>=? AND close_qfq>0) "
-                    "SELECT t1.symbol, t0.date, t1.close_qfq FROM t t0 JOIN t t1 "
-                    "ON t0.symbol=t1.symbol AND t1.rn=t0.rn+1 "
-                    "WHERE t0.symbol IN (%s)" % (ph, ph),
-                    syms + [min_d] + syms).fetchall():
-                t1_price[(s, d)] = c
+            if buy_mode == 't1' and syms and dates:
+                min_d = min(dates)
+                for s, d, c in seq.execute(
+                        "WITH t AS (SELECT symbol, date, close_qfq, ROW_NUMBER() OVER "
+                        "(PARTITION BY symbol ORDER BY date) rn FROM stock_daily "
+                        "WHERE symbol IN (%s) AND date>=? AND close_qfq>0) "
+                        "SELECT t1.symbol, t0.date, t1.close_qfq FROM t t0 JOIN t t1 "
+                        "ON t0.symbol=t1.symbol AND t1.rn=t0.rn+1 "
+                        "WHERE t0.symbol IN (%s)" % (ph, ph),
+                        syms + [min_d] + syms).fetchall():
+                    t1_price[(s, d)] = c
         for it in items:
-            sc_ = t1_price.get((it.get("symbol"), it.get("date"))) or sig_close.get((it.get("symbol"), it.get("date")))
+            sc_ = (t1_price.get((it.get("symbol"), it.get("date"))) or sig_close.get((it.get("symbol"), it.get("date")))) if buy_mode == 't1' \
+                else sig_close.get((it.get("symbol"), it.get("date")))
             lc = latest.get(it.get("symbol"))
             it["ret_pct"] = round((lc / sc_ - 1) * 100, 1) if sc_ and lc else None
         seq.close()
@@ -889,7 +893,7 @@ def get_bc_picks():
             d["name"] = real_name["name"]
         result.append(d)
     conn_seq.close()
-    result = _add_ret_pct(result)
+    result = _add_ret_pct(result, buy_mode='same_day')
     return jsonify(result)
 
 
