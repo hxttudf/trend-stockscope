@@ -619,13 +619,27 @@ def _add_ret_pct(items):
             ph = ",".join("?" * len(syms))
             dates = sorted({it["date"] for it in items if it.get("date")})
             dph = ",".join("?" * len(dates)) if dates else "''"
+            # LEAD: 每根K线的下一交易日收盘(信号日T+1买入价用)
+            # 对每只股票取 signal_date 之后的第一根K线close_qfq 作为 T+1 买入价
             for s, d, c in seq.execute(
                     "SELECT symbol, date, close_qfq FROM stock_daily "
                     "WHERE symbol IN (%s) AND date IN (%s) AND close_qfq>0" % (ph, dph),
                     syms + dates).fetchall():
                 sig_close[(s, d)] = c
+            # T+1买入价: 信号日之后(>date)第一根有收盘的K线, 一次范围查询按(symbol,date)索引取
+            t1_price = {}
+            min_d = min(dates) if dates else ""
+            for s, d, c in seq.execute(
+                    "WITH t AS (SELECT symbol, date, close_qfq, ROW_NUMBER() OVER "
+                    "(PARTITION BY symbol ORDER BY date) rn FROM stock_daily "
+                    "WHERE symbol IN (%s) AND date>=? AND close_qfq>0) "
+                    "SELECT t1.symbol, t0.date, t1.close_qfq FROM t t0 JOIN t t1 "
+                    "ON t0.symbol=t1.symbol AND t1.rn=t0.rn+1 "
+                    "WHERE t0.symbol IN (%s)" % (ph, ph),
+                    syms + [min_d] + syms).fetchall():
+                t1_price[(s, d)] = c
         for it in items:
-            sc_ = sig_close.get((it.get("symbol"), it.get("date")))
+            sc_ = t1_price.get((it.get("symbol"), it.get("date"))) or sig_close.get((it.get("symbol"), it.get("date")))
             lc = latest.get(it.get("symbol"))
             it["ret_pct"] = round((lc / sc_ - 1) * 100, 1) if sc_ and lc else None
         seq.close()
