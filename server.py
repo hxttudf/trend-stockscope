@@ -107,6 +107,16 @@ def get_kline(symbol):
     basic = cur.execute(
         "SELECT mktcap, nmc FROM stock_basics WHERE symbol=? ORDER BY date DESC LIMIT 1", (symbol,)
     ).fetchone()
+    # 盘中预K线: 正式K(stock_daily)尚缺最新一天时, 用 preview_daily 最新批次补最后1根(盘后update_daily写入正式K后自动不补)
+    try:
+        pv = cur.execute(
+            """SELECT date, open, high, low, close, close_qfq, volume, amount
+               FROM preview_daily WHERE symbol = ?
+               ORDER BY batch_date DESC, batch_seq DESC, date DESC LIMIT 1""",
+            (symbol,)
+        ).fetchone()
+    except Exception:
+        pv = None
     conn.close()
     
     kline = []
@@ -138,6 +148,33 @@ def get_kline(symbol):
                 "turnover": r["turnover"] if r["turnover"] else 0,
             })
     
+    # 盘中预K线: 正式K缺最新一天时追加(仅1根, 盘后正式K入库后 date<=最后正式K 自动不再补)
+    if pv and pv["date"] and (not kline or pv["date"] > kline[-1]["time"]):
+        _r = {"date": pv["date"], "open": pv["open"], "high": pv["high"], "low": pv["low"],
+              "close": pv["close"], "close_qfq": pv["close_qfq"], "volume": pv["volume"],
+              "turnover": pv["amount"], "open_qfq": None, "high_qfq": None, "low_qfq": None}
+        if use_qfq and _r["close_qfq"] and _r["close_qfq"] > 0:
+            ratio = _r["close_qfq"] / _r["close"] if _r["close"] and _r["close"] > 0 else 1.0
+            kline.append({
+                "time": _r["date"],
+                "open": round(_r["open"] * ratio, 2) if _r["open"] else 0,
+                "high": round(_r["high"] * ratio, 2) if _r["high"] else 0,
+                "low": round(_r["low"] * ratio, 2) if _r["low"] else 0,
+                "close": round(_r["close_qfq"], 2),
+                "volume": _r["volume"],
+                "turnover": _r["turnover"] if _r["turnover"] else 0,
+            })
+        else:
+            kline.append({
+                "time": _r["date"],
+                "open": round(_r["open"], 2) if _r["open"] else 0,
+                "high": round(_r["high"], 2) if _r["high"] else 0,
+                "low": round(_r["low"], 2) if _r["low"] else 0,
+                "close": round(_r["close"], 2) if _r["close"] else 0,
+                "volume": _r["volume"],
+                "turnover": _r["turnover"] if _r["turnover"] else 0,
+            })
+
     # Get signal markers from daily_picks (both local and trend_picks)
     signals = _get_stock_signals(symbol)
     
