@@ -104,6 +104,7 @@ export default function App() {
   const [signals, setSignals] = useState<Signal[]>([])
   const [range, setRange] = useState(RANGES[2]) // default 6m
   const [qfq, setQfq] = useState(true)
+  const [showBoll, setShowBoll] = useState(false)  // 布林带显示开关(布按钮)
 
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>([])
   const [picks, setPicks] = useState<PickRecord[]>([])
@@ -584,6 +585,12 @@ export default function App() {
         </div>
 
         <div className="toolbar">
+          <button className={`toolbar-btn ${showBoll ? 'active' : ''}`}
+            onClick={() => setShowBoll(s => !s)}
+            style={{ fontSize: 11, padding: '2px 6px', marginRight: 6 }}
+            title="布林带显示开关(BOLL 20,2 上/中/下轨)">
+            布
+          </button>
           <div className="qfq-toggle">
             <input type="checkbox" id="qfq" checked={qfq}
               onChange={e => setQfq(e.target.checked)} />
@@ -714,6 +721,7 @@ export default function App() {
               showAllZs={showAllZs}
               showTrend={showTrend}
               showBottom={showBottom}
+              showBoll={showBoll}
             />
             </ChartErrorBoundary>
             {(!currentStock || !kline) && (

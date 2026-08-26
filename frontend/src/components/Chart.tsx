@@ -42,6 +42,7 @@ interface ChartProps {
   showAllZs?: boolean
   showTrend?: boolean   // 显示趋势信号
   showBottom?: boolean  // 显示底部信号
+  showBoll?: boolean    // 显示布林带(BOLL 20,2)
 }
 const COLORS = {
   bg: '#0d1117',
@@ -77,7 +78,7 @@ const bdStr = (t: Time | string): string => {
 
 export default memo(Chart)
 
-function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, benchmarkTime, highlightSignal, focusDate, chanlun, zsAsOf, onZsRangeChange, showAllZs, showTrend, showBottom }: ChartProps) {
+function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, benchmarkTime, highlightSignal, focusDate, chanlun, zsAsOf, onZsRangeChange, showAllZs, showTrend, showBottom, showBoll }: ChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const macdContainerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
@@ -415,8 +416,56 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, b
       <div ref={containerRef} style={{ width: '100%', flex: 1, minHeight: 0, touchAction: 'manipulation' }} />
       <div ref={macdContainerRef} style={{ width: '100%', height: 120, flexShrink: 0, borderTop: '1px solid var(--border, #30363d)' }} />
       {chartReady && chanOverlayReady && <ChanlunOverlay chanlun={chanlun ?? null} kline={kline} chartRef={chartRef} candleSeriesRef={candleSeriesRef} zsAsOf={zsAsOf ?? null} onZsRangeChange={onZsRangeChange} showAllZs={showAllZs ?? false} showTrend={showTrend ?? false} showBottom={showBottom ?? false} benchmarkTime={benchmarkTime} highlightSignal={highlightSignal} signals={signals} />}
+      {chartReady && <BollOverlay kline={kline} chartRef={chartRef} showBoll={showBoll ?? false} />}
     </div>
   )
+}
+
+// ═══ 布林带(BOLL 20,2): 独立effect, 与缠论overlay互不干扰 ═══
+function BollOverlay({ kline, chartRef, showBoll }: {
+  kline: KlinePoint[]
+  chartRef: React.RefObject<IChartApi | null>
+  showBoll: boolean
+}) {
+  const bollRef = useRef<ISeriesApi<'Line'>[]>([])
+  useEffect(() => {
+    const chart = chartRef.current
+    if (!chart) return
+    // 先清旧
+    bollRef.current.forEach(s => {
+      try { s.setData([]); chart.removeSeries(s) } catch { /* noop */ }
+    })
+    bollRef.current = []
+    if (!showBoll || kline.length < 20) return
+
+    const closes = kline.map(k => k.close)
+    const N = 20, K = 2
+    const mid: LineData[] = [], up: LineData[] = [], low: LineData[] = []
+    for (let i = N - 1; i < closes.length; i++) {
+      let sum = 0
+      for (let j = i - N + 1; j <= i; j++) sum += closes[j]
+      const m = sum / N
+      let sq = 0
+      for (let j = i - N + 1; j <= i; j++) sq += (closes[j] - m) ** 2
+      const sd = Math.sqrt(sq / N)
+      const t = toBD(kline[i].time)
+      mid.push({ time: t, value: m })
+      up.push({ time: t, value: m + K * sd })
+      low.push({ time: t, value: m - K * sd })
+    }
+    const mk = (data: LineData[], color: string, width: 1 | 2 | 3 | 4, style?: number) => {
+      const s = chart.addSeries(LineSeries, {
+        color, lineWidth: width, lineStyle: style ?? 0,
+        lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false,
+      })
+      s.setData(data)
+      bollRef.current.push(s)
+    }
+    mk(up, 'rgba(240,136,62,0.85)', 1)     // 上轨 橙
+    mk(mid, 'rgba(139,148,158,0.7)', 1, 2) // 中轨 灰虚线
+    mk(low, 'rgba(88,166,255,0.85)', 1)    // 下轨 蓝
+  }, [kline, showBoll, chartRef])
+  return null
 }
 
 // ═══ 缠论绘制(完整版): 线段折线 + 笔 + 中枢线 + 买卖点标记 ═══
