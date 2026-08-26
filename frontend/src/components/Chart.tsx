@@ -43,6 +43,7 @@ interface ChartProps {
   showTrend?: boolean   // 显示趋势信号
   showBottom?: boolean  // 显示底部信号
   showBoll?: boolean    // 显示布林带(BOLL 20,2)
+  showMa?: boolean      // 显示均线(MA5/10/20/60)
 }
 const COLORS = {
   bg: '#0d1117',
@@ -78,7 +79,7 @@ const bdStr = (t: Time | string): string => {
 
 export default memo(Chart)
 
-function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, benchmarkTime, highlightSignal, focusDate, chanlun, zsAsOf, onZsRangeChange, showAllZs, showTrend, showBottom, showBoll }: ChartProps) {
+function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, benchmarkTime, highlightSignal, focusDate, chanlun, zsAsOf, onZsRangeChange, showAllZs, showTrend, showBottom, showBoll, showMa = true }: ChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const macdContainerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
@@ -348,10 +349,11 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, b
 
     try { candleSeriesRef.current.setData(candleData) } catch (e) { console.warn('[K线setData跳过]', e) }
     try { volumeSeriesRef.current.setData(volData) } catch (e) { console.warn('[量setData跳过]', e) }
-    try { ma5Ref.current?.setData(calcMA(5)) } catch (e) { console.warn('[MA5跳过]', e) }
-    try { ma10Ref.current?.setData(calcMA(10)) } catch (e) { console.warn('[MA10跳过]', e) }
-    try { ma20Ref.current?.setData(calcMA(20)) } catch (e) { console.warn('[MA20跳过]', e) }
-    try { ma60Ref.current?.setData(calcMA(60)) } catch (e) { console.warn('[MA60跳过]', e) }
+    // 均线开关: 关闭时set空数据隐藏(系列保留, 开关即时生效)
+    try { ma5Ref.current?.setData(showMa ? calcMA(5) : []) } catch (e) { console.warn('[MA5跳过]', e) }
+    try { ma10Ref.current?.setData(showMa ? calcMA(10) : []) } catch (e) { console.warn('[MA10跳过]', e) }
+    try { ma20Ref.current?.setData(showMa ? calcMA(20) : []) } catch (e) { console.warn('[MA20跳过]', e) }
+    try { ma60Ref.current?.setData(showMa ? calcMA(60) : []) } catch (e) { console.warn('[MA60跳过]', e) }
 
     // MACD (12, 26, 9)
     const emaArr = (data: number[], period: number): number[] => {
@@ -409,7 +411,7 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, b
     const syncRange = chartRef.current?.timeScale().getVisibleLogicalRange()
     if (syncRange) macdChartRef.current?.timeScale().setVisibleLogicalRange(syncRange)
 
-  }, [kline, signals, symbol, range, focusDate, benchmarkTime])
+  }, [kline, signals, symbol, range, focusDate, benchmarkTime, showMa])
 
   return (
     <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -417,6 +419,7 @@ function Chart({ kline, signals, symbol, range, onCrosshairMove, onChartClick, b
       <div ref={macdContainerRef} style={{ width: '100%', height: 120, flexShrink: 0, borderTop: '1px solid var(--border, #30363d)' }} />
       {chartReady && chanOverlayReady && <ChanlunOverlay chanlun={chanlun ?? null} kline={kline} chartRef={chartRef} candleSeriesRef={candleSeriesRef} zsAsOf={zsAsOf ?? null} onZsRangeChange={onZsRangeChange} showAllZs={showAllZs ?? false} showTrend={showTrend ?? false} showBottom={showBottom ?? false} benchmarkTime={benchmarkTime} highlightSignal={highlightSignal} signals={signals} />}
       {chartReady && <BollOverlay kline={kline} chartRef={chartRef} showBoll={showBoll ?? false} />}
+      {/* showMa变化时主图effect重算(依赖数组含showMa), 此处仅占位注释 */}
     </div>
   )
 }
@@ -461,9 +464,9 @@ function BollOverlay({ kline, chartRef, showBoll }: {
       s.setData(data)
       bollRef.current.push(s)
     }
-    mk(up, 'rgba(240,136,62,0.85)', 1)     // 上轨 橙
-    mk(mid, 'rgba(139,148,158,0.7)', 1, 2) // 中轨 灰虚线
-    mk(low, 'rgba(88,166,255,0.85)', 1)    // 下轨 蓝
+    mk(up, 'rgba(242,54,69,0.85)', 1)      // 上轨 红
+    mk(mid, 'rgba(88,166,255,0.9)', 1, 2)  // 中轨 蓝虚线
+    mk(low, 'rgba(8,153,129,0.85)', 1)     // 下轨 绿
   }, [kline, showBoll, chartRef])
   return null
 }

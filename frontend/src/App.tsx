@@ -105,6 +105,27 @@ export default function App() {
   const [range, setRange] = useState(RANGES[2]) // default 6m
   const [qfq, setQfq] = useState(true)
   const [showBoll, setShowBoll] = useState(false)  // 布林带显示开关(布按钮)
+  const [showMa, setShowMa] = useState(true)       // 均线显示开关(均按钮)
+
+  // 工具栏开关记忆: 刷新后恢复上次选择(localStorage持久化)
+  useEffect(() => {
+    try {
+      const s = JSON.parse(localStorage.getItem('stockscope_toggles') || '{}')
+      if (typeof s.qfq === 'boolean') setQfq(s.qfq)
+      if (typeof s.showBoll === 'boolean') setShowBoll(s.showBoll)
+      if (typeof s.showMa === 'boolean') setShowMa(s.showMa)
+      if (typeof s.measureMode === 'boolean') setMeasureMode(s.measureMode)
+      if (typeof s.showAllZs === 'boolean') setShowAllZs(s.showAllZs)
+      if (typeof s.showTrend === 'boolean') setShowTrend(s.showTrend)
+      if (typeof s.showBottom === 'boolean') setShowBottom(s.showBottom)
+      if (s.rangeLabel) {
+        const r = RANGES.find(x => x.label === s.rangeLabel)
+        if (r) setRange(r)
+      }
+    } catch { /* 首次无记录 */ }
+  }, [])
+
+
 
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>([])
   const [picks, setPicks] = useState<PickRecord[]>([])
@@ -133,6 +154,16 @@ export default function App() {
   const loadSeq = useRef(0)  // K线请求序号: 防快速切股竞态(旧响应覆盖新)
   const chanlunSeq = useRef(0)  // chanlun请求独立序号(不干扰K线)
   const [benchmarkIdx, setBenchmarkIdx] = useState<number | null>(null)
+
+  // 开关变化即持久化(单一数据源: state本身, 无闭包过期问题)
+  useEffect(() => {
+    try {
+      localStorage.setItem('stockscope_toggles', JSON.stringify({
+        qfq, showBoll, showMa, measureMode, showAllZs, showTrend, showBottom,
+        rangeLabel: range.label,
+      }))
+    } catch { /* 存储满忽略 */ }
+  }, [qfq, showBoll, showMa, measureMode, showAllZs, showTrend, showBottom, range.label])
   const [focusDate, setFocusDate] = useState<string | null>(null)  // 选股跳转时聚焦的日期
   const [highlightSignal, setHighlightSignal] = useState<{ date: string; label: string } | null>(null)  // 来源信号高亮(从选股/底部确认/缠论tab点击)
 
@@ -585,15 +616,21 @@ export default function App() {
         </div>
 
         <div className="toolbar">
-          <button className={`toolbar-btn ${showBoll ? 'active' : ''}`}
-            onClick={() => setShowBoll(s => !s)}
+          <button className={`toolbar-btn ${showMa ? 'active' : ''}`}
+            onClick={() => { setShowMa(s => !s) }}
             style={{ fontSize: 11, padding: '2px 6px', marginRight: 6 }}
-            title="布林带显示开关(BOLL 20,2 上/中/下轨)">
+            title="均线显示开关(MA5/10/20/60)">
+            均
+          </button>
+          <button className={`toolbar-btn ${showBoll ? 'active' : ''}`}
+            onClick={() => { setShowBoll(s => !s) }}
+            style={{ fontSize: 11, padding: '2px 6px', marginRight: 6 }}
+            title="布林带显示开关(BOLL 20,2 上红/中蓝/下绿)">
             布
           </button>
           <div className="qfq-toggle">
             <input type="checkbox" id="qfq" checked={qfq}
-              onChange={e => setQfq(e.target.checked)} />
+              onChange={e => { setQfq(e.target.checked);  }} />
             <label htmlFor="qfq">前复权</label>
           </div>
           <button className={`toolbar-btn ${measureMode ? 'active' : ''}`}
@@ -602,19 +639,19 @@ export default function App() {
             M
           </button>
           <button className={`toolbar-btn ${showAllZs ? 'active' : ''}`}
-            onClick={() => setShowAllZs(s => !s)}
+            onClick={() => { setShowAllZs(s => !s) }}
             style={{ fontSize: 11, padding: '2px 6px' }}
             title="中枢显示开关(青色上下沿线+矩形框)">
             枢
           </button>
           <button className={`toolbar-btn ${showTrend ? 'active' : ''}`}
-            onClick={() => setShowTrend(s => !s)}
+            onClick={() => { setShowTrend(s => !s) }}
             style={{ fontSize: 11, padding: '2px 6px' }}
             title="趋势信号显示开关(选股策略标记)">
             趋
           </button>
           <button className={`toolbar-btn ${showBottom ? 'active' : ''}`}
-            onClick={() => setShowBottom(s => !s)}
+            onClick={() => { setShowBottom(s => !s) }}
             style={{ fontSize: 11, padding: '2px 6px' }}
             title="底部信号显示开关(底部确认策略标记)">
             底
@@ -624,7 +661,7 @@ export default function App() {
             {RANGES.map(r => (
               <button key={r.label}
                 className={`range-btn ${range.label === r.label ? 'active' : ''}`}
-                onClick={() => { setRange(r); setFocusDate(null); }}>
+                onClick={() => { setRange(r); setFocusDate(null);  }}>
                 {r.label}
               </button>
             ))}
@@ -722,6 +759,7 @@ export default function App() {
               showTrend={showTrend}
               showBottom={showBottom}
               showBoll={showBoll}
+              showMa={showMa}
             />
             </ChartErrorBoundary>
             {(!currentStock || !kline) && (
