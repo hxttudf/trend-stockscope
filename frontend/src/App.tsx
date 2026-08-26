@@ -102,28 +102,15 @@ export default function App() {
   const [currentStock, setCurrentStock] = useState<StockInfo | null>(null)
   const [kline, setKline] = useState<KlineData | null>(null)
   const [signals, setSignals] = useState<Signal[]>([])
-  const [range, setRange] = useState(RANGES[2]) // default 6m
-  const [qfq, setQfq] = useState(true)
-  const [showBoll, setShowBoll] = useState(false)  // 布林带显示开关(布按钮)
-  const [showMa, setShowMa] = useState(true)       // 均线显示开关(均按钮)
+  // 工具栏开关记忆: localStorage读取(useState惰性初始化, 首帧即正确值无闪烁)
+  const savedToggles = (() => {
+    try { return JSON.parse(localStorage.getItem('stockscope_toggles') || '{}') } catch { return {} }
+  })()
+  const [range, setRange] = useState(RANGES.find(r => r.label === savedToggles.rangeLabel) ?? RANGES[2]) // default 6m
+  const [qfq, setQfq] = useState(typeof savedToggles.qfq === 'boolean' ? savedToggles.qfq : true)
+  const [showBoll, setShowBoll] = useState(typeof savedToggles.showBoll === 'boolean' ? savedToggles.showBoll : false)  // 布林带显示开关(布按钮)
+  const [showMa, setShowMa] = useState(typeof savedToggles.showMa === 'boolean' ? savedToggles.showMa : true)       // 均线显示开关(均按钮)
 
-  // 工具栏开关记忆: 刷新后恢复上次选择(localStorage持久化)
-  useEffect(() => {
-    try {
-      const s = JSON.parse(localStorage.getItem('stockscope_toggles') || '{}')
-      if (typeof s.qfq === 'boolean') setQfq(s.qfq)
-      if (typeof s.showBoll === 'boolean') setShowBoll(s.showBoll)
-      if (typeof s.showMa === 'boolean') setShowMa(s.showMa)
-      if (typeof s.measureMode === 'boolean') setMeasureMode(s.measureMode)
-      if (typeof s.showAllZs === 'boolean') setShowAllZs(s.showAllZs)
-      if (typeof s.showTrend === 'boolean') setShowTrend(s.showTrend)
-      if (typeof s.showBottom === 'boolean') setShowBottom(s.showBottom)
-      if (s.rangeLabel) {
-        const r = RANGES.find(x => x.label === s.rangeLabel)
-        if (r) setRange(r)
-      }
-    } catch { /* 首次无记录 */ }
-  }, [])
 
 
 
@@ -143,11 +130,11 @@ export default function App() {
   const [chanlunPreview, setChanlunPreview] = useState(false)  // 盘中预览模式
   const [chanlunEtf, setChanlunEtf] = useState(false)  // 缠论tab: 只看ETF信号
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null)
-  const [measureMode, setMeasureMode] = useState(false)
+  const [measureMode, setMeasureMode] = useState(typeof savedToggles.measureMode === 'boolean' ? savedToggles.measureMode : false)
   const [chanlunMode, setChanlunMode] = useState(true)  // 默认选中缠(笔/中枢/买卖点)
-  const [showAllZs, setShowAllZs] = useState(false)  // 显示全部历史中枢(矩形框)
-  const [showTrend, setShowTrend] = useState(false)   // 显示趋势信号(daily_picks)
-  const [showBottom, setShowBottom] = useState(false)  // 显示底部信号(bottom_confirm)
+  const [showAllZs, setShowAllZs] = useState(typeof savedToggles.showAllZs === 'boolean' ? savedToggles.showAllZs : false)  // 显示全部历史中枢(矩形框)
+  const [showTrend, setShowTrend] = useState(typeof savedToggles.showTrend === 'boolean' ? savedToggles.showTrend : false)   // 显示趋势信号(daily_picks)
+  const [showBottom, setShowBottom] = useState(typeof savedToggles.showBottom === 'boolean' ? savedToggles.showBottom : false)  // 显示底部信号(bottom_confirm)
   const [chanlunData, setChanlunData] = useState<any>(null)
   const [zsAsOf, setZsAsOf] = useState<any>(null)  // 动态中枢: {date, zd, zg, ext, since} 视角历史时回放当时中枢
   const zsSeq = useRef(0)  // 动态中枢请求独立序号(防旧股票/旧日期响应覆盖)
@@ -617,13 +604,13 @@ export default function App() {
 
         <div className="toolbar">
           <button className={`toolbar-btn ${showMa ? 'active' : ''}`}
-            onClick={() => { setShowMa(s => !s) }}
+            onClick={() => { setShowMa((s: boolean) => !s) }}
             style={{ fontSize: 11, padding: '2px 6px', marginRight: 6 }}
             title="均线显示开关(MA5/10/20/60)">
             均
           </button>
           <button className={`toolbar-btn ${showBoll ? 'active' : ''}`}
-            onClick={() => { setShowBoll(s => !s) }}
+            onClick={() => { setShowBoll((s: boolean) => !s) }}
             style={{ fontSize: 11, padding: '2px 6px', marginRight: 6 }}
             title="布林带显示开关(BOLL 20,2 上红/中蓝/下绿)">
             布
@@ -634,24 +621,24 @@ export default function App() {
             <label htmlFor="qfq">前复权</label>
           </div>
           <button className={`toolbar-btn ${measureMode ? 'active' : ''}`}
-            onClick={() => { setMeasureMode(m => !m); setBenchmarkIdx(null) }}
+            onClick={() => { setMeasureMode((m: boolean) => !m); setBenchmarkIdx(null) }}
             style={{ fontSize: 11, padding: '2px 6px' }}>
             M
           </button>
           <button className={`toolbar-btn ${showAllZs ? 'active' : ''}`}
-            onClick={() => { setShowAllZs(s => !s) }}
+            onClick={() => { setShowAllZs((s: boolean) => !s) }}
             style={{ fontSize: 11, padding: '2px 6px' }}
             title="中枢显示开关(青色上下沿线+矩形框)">
             枢
           </button>
           <button className={`toolbar-btn ${showTrend ? 'active' : ''}`}
-            onClick={() => { setShowTrend(s => !s) }}
+            onClick={() => { setShowTrend((s: boolean) => !s) }}
             style={{ fontSize: 11, padding: '2px 6px' }}
             title="趋势信号显示开关(选股策略标记)">
             趋
           </button>
           <button className={`toolbar-btn ${showBottom ? 'active' : ''}`}
-            onClick={() => { setShowBottom(s => !s) }}
+            onClick={() => { setShowBottom((s: boolean) => !s) }}
             style={{ fontSize: 11, padding: '2px 6px' }}
             title="底部信号显示开关(底部确认策略标记)">
             底
