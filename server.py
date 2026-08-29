@@ -495,6 +495,27 @@ def api_chanlun_dates():
     typ = request.args.get("type", "")
     preview = request.args.get("preview", "") == "1"
     etf = request.args.get("etf", "0") == "1"
+    cat = request.args.get("category", "")
+    # 指数维度(category=index): 实时COUNT(信号量小, 无需缓存表)
+    if cat == "index" and not preview:
+        if typ in ("二三买", "二三卖"):
+            bt = "二买" if typ == "二三买" else "二卖"
+            st = "三买" if typ == "二三买" else "三卖"
+            rows = conn.execute(
+                "SELECT a.signal_date, COUNT(DISTINCT a.symbol) FROM chanlun_signals a "
+                "JOIN chanlun_signals b ON a.symbol=b.symbol AND a.signal_date=b.signal_date "
+                "WHERE a.status='ok' AND b.status='ok' AND a.signal_type=? AND b.signal_type=? AND a.category='index' "
+                "GROUP BY a.signal_date ORDER BY a.signal_date DESC LIMIT 60", (bt, st)).fetchall()
+        elif typ.lower() == "d3":
+            rows = conn.execute("SELECT signal_date, COUNT(*) FROM chanlun_signals WHERE category='index' AND d3=1 AND status='ok' GROUP BY signal_date ORDER BY signal_date DESC LIMIT 60").fetchall()
+        elif typ.lower() == "w30":
+            rows = conn.execute("SELECT signal_date, COUNT(*) FROM chanlun_signals WHERE category='index' AND w30=1 AND status='ok' GROUP BY signal_date ORDER BY signal_date DESC LIMIT 60").fetchall()
+        elif typ:
+            rows = conn.execute("SELECT signal_date, COUNT(*) FROM chanlun_signals WHERE category='index' AND status='ok' AND signal_type=? GROUP BY signal_date ORDER BY signal_date DESC LIMIT 60", (typ,)).fetchall()
+        else:
+            rows = conn.execute("SELECT signal_date, COUNT(*) FROM chanlun_signals WHERE category='index' AND status='ok' GROUP BY signal_date ORDER BY signal_date DESC LIMIT 60").fetchall()
+        conn.close()
+        return json.dumps([{"date": r[0], "total": r[1]} for r in rows], ensure_ascii=False)
     # ETF过滤在SQL层(日期和数量都按ETF口径), etf=1只看ETF; 默认排除ETF只看股票
     ETC = _etf_sym_cond() if etf else "NOT " + _etf_sym_cond()
     # 读持久化缓存(chanlun_dates_cache, 每日计算后重建; 空表/无数据则现算兜底)
@@ -696,7 +717,7 @@ def api_chanlun_signals():
     typ = request.args.get("type", "")
     conn = db_conn(TREND_DB)
     preview = request.args.get("preview", "") == "1"
-    ck = (date, typ, preview, request.args.get("etf", "0"))
+    ck = (date, typ, preview, request.args.get("etf", "0"), request.args.get("category", ""))
     hit = _sig_cache.get(ck)
     if hit and time.time() - hit[0] < 300:
         return hit[1]
@@ -708,15 +729,15 @@ def api_chanlun_signals():
             if date in pv_dates:
                 if typ.lower() == "d3":
                     rows = conn.execute(
-                        "SELECT symbol, name, signal_type, signal_date, price, ref_zd, ref_zg, status, strength, strength_score FROM preview_signals "
+                        "SELECT symbol, name, signal_type, signal_date, price, ref_zd, ref_zg, status, strength, strength_score, category FROM preview_signals "
                         "WHERE signal_date=? AND d3=1 ORDER BY symbol", (date,)).fetchall()
                 elif typ.lower() == "w30":
                     rows = conn.execute(
-                        "SELECT symbol, name, signal_type, signal_date, price, ref_zd, ref_zg, status, strength, strength_score FROM preview_signals "
+                        "SELECT symbol, name, signal_type, signal_date, price, ref_zd, ref_zg, status, strength, strength_score, category FROM preview_signals "
                         "WHERE signal_date=? AND w30=1 ORDER BY symbol", (date,)).fetchall()
                 elif typ == "二三买":
                     rows = conn.execute(
-                        "SELECT a.symbol, a.name, a.signal_type, a.signal_date, a.price, a.ref_zd, a.ref_zg, a.status, a.strength, a.strength_score "
+                        "SELECT a.symbol, a.name, a.signal_type, a.signal_date, a.price, a.ref_zd, a.ref_zg, a.status, a.strength, a.strength_score, a.category "
                         "FROM preview_signals a JOIN preview_signals b "
                         "ON a.symbol=b.symbol AND a.signal_date=b.signal_date "
                         "WHERE (a.batch_date, a.batch_seq) IN (SELECT batch_date, batch_seq FROM preview_signals ORDER BY batch_date DESC, batch_seq DESC LIMIT 1) AND a.signal_date=? AND ((a.signal_type='二买' AND b.signal_type='三买') "
@@ -724,14 +745,14 @@ def api_chanlun_signals():
                         "ORDER BY a.symbol, a.signal_type", (date,)).fetchall()
                 elif typ == "二三卖":
                     rows = conn.execute(
-                        "SELECT a.symbol, a.name, a.signal_type, a.signal_date, a.price, a.ref_zd, a.ref_zg, a.status, a.strength, a.strength_score "
+                        "SELECT a.symbol, a.name, a.signal_type, a.signal_date, a.price, a.ref_zd, a.ref_zg, a.status, a.strength, a.strength_score, a.category "
                         "FROM preview_signals a JOIN preview_signals b "
                         "ON a.symbol=b.symbol AND a.signal_date=b.signal_date "
                         "WHERE (a.batch_date, a.batch_seq) IN (SELECT batch_date, batch_seq FROM preview_signals ORDER BY batch_date DESC, batch_seq DESC LIMIT 1) AND a.signal_date=? AND ((a.signal_type='二卖' AND b.signal_type='三卖') "
                         "OR (a.signal_type='三卖' AND b.signal_type='二卖')) "
                         "ORDER BY a.symbol, a.signal_type", (date,)).fetchall()
                 else:
-                    q = "SELECT symbol, name, signal_type, signal_date, price, ref_zd, ref_zg, status, strength, strength_score FROM preview_signals WHERE signal_date=?"
+                    q = "SELECT symbol, name, signal_type, signal_date, price, ref_zd, ref_zg, status, strength, strength_score, category FROM preview_signals WHERE signal_date=?"
                     args = [date]
                     if typ:
                         q += " AND signal_type=?"
@@ -746,7 +767,7 @@ def api_chanlun_signals():
                     rows = _w30_list(conn, date)
                 elif typ == "二三买":
                     rows = conn.execute(
-                        "SELECT a.symbol, a.name, a.signal_type, a.signal_date, a.price, a.ref_zd, a.ref_zg, a.status, a.strength, a.strength_score "
+                        "SELECT a.symbol, a.name, a.signal_type, a.signal_date, a.price, a.ref_zd, a.ref_zg, a.status, a.strength, a.strength_score, a.category "
                         "FROM chanlun_signals a JOIN chanlun_signals b "
                         "ON a.symbol=b.symbol AND a.signal_date=b.signal_date "
                         "WHERE a.signal_date=? AND ((a.signal_type='二买' AND b.signal_type='三买') "
@@ -754,14 +775,14 @@ def api_chanlun_signals():
                         "ORDER BY a.symbol, a.signal_type", (date,)).fetchall()
                 elif typ == "二三卖":
                     rows = conn.execute(
-                        "SELECT a.symbol, a.name, a.signal_type, a.signal_date, a.price, a.ref_zd, a.ref_zg, a.status, a.strength, a.strength_score "
+                        "SELECT a.symbol, a.name, a.signal_type, a.signal_date, a.price, a.ref_zd, a.ref_zg, a.status, a.strength, a.strength_score, a.category "
                         "FROM chanlun_signals a JOIN chanlun_signals b "
                         "ON a.symbol=b.symbol AND a.signal_date=b.signal_date "
                         "WHERE a.signal_date=? AND ((a.signal_type='二卖' AND b.signal_type='三卖') "
                         "OR (a.signal_type='三卖' AND b.signal_type='二卖')) "
                         "ORDER BY a.symbol, a.signal_type", (date,)).fetchall()
                 else:
-                    q = "SELECT symbol, name, signal_type, signal_date, price, ref_zd, ref_zg, status, strength, strength_score FROM chanlun_signals WHERE signal_date=?"
+                    q = "SELECT symbol, name, signal_type, signal_date, price, ref_zd, ref_zg, status, strength, strength_score, category FROM chanlun_signals WHERE signal_date=?"
                     args = [date]
                     if typ:
                         q += " AND signal_type=?"
@@ -775,7 +796,7 @@ def api_chanlun_signals():
         elif typ == "二三买":
             # 返回双行(二买+三买各自带status), 前端合并逻辑自动逐类型标✗
             rows = conn.execute(
-                "SELECT a.symbol, a.name, a.signal_type, a.signal_date, a.price, a.ref_zd, a.ref_zg, a.status, a.strength, a.strength_score "
+                "SELECT a.symbol, a.name, a.signal_type, a.signal_date, a.price, a.ref_zd, a.ref_zg, a.status, a.strength, a.strength_score, a.category "
                 "FROM chanlun_signals a JOIN chanlun_signals b "
                 "ON a.symbol=b.symbol AND a.signal_date=b.signal_date "
                 "WHERE a.signal_date=? AND ((a.signal_type='二买' AND b.signal_type='三买') "
@@ -783,14 +804,14 @@ def api_chanlun_signals():
                 "ORDER BY a.symbol, a.signal_type", (date,)).fetchall()
         elif typ == "二三卖":
             rows = conn.execute(
-                "SELECT a.symbol, a.name, a.signal_type, a.signal_date, a.price, a.ref_zd, a.ref_zg, a.status, a.strength, a.strength_score "
+                "SELECT a.symbol, a.name, a.signal_type, a.signal_date, a.price, a.ref_zd, a.ref_zg, a.status, a.strength, a.strength_score, a.category "
                 "FROM chanlun_signals a JOIN chanlun_signals b "
                 "ON a.symbol=b.symbol AND a.signal_date=b.signal_date "
                 "WHERE a.signal_date=? AND ((a.signal_type='二卖' AND b.signal_type='三卖') "
                 "OR (a.signal_type='三卖' AND b.signal_type='二卖')) "
                 "ORDER BY a.symbol, a.signal_type", (date,)).fetchall()
         else:
-            q = "SELECT symbol, name, signal_type, signal_date, price, ref_zd, ref_zg, status, strength, strength_score FROM chanlun_signals WHERE signal_date=?"
+            q = "SELECT symbol, name, signal_type, signal_date, price, ref_zd, ref_zg, status, strength, strength_score, category FROM chanlun_signals WHERE signal_date=?"
             args = [date]
             if typ:
                 q += " AND signal_type=?"
@@ -803,13 +824,19 @@ def api_chanlun_signals():
               "price": r[4], "zd": r[5], "zg": r[6],
               "status": r[7] if len(r) > 7 else "ok",
               "strength": r[8] if len(r) > 8 else "neutral",
-              "score": r[9] if len(r) > 9 else 50} for r in rows]
-    # ETF过滤: etf=1只看ETF(5/15/16开头); 默认排除ETF(缠论tab保持股票视图)
+              "score": r[9] if len(r) > 9 else 50,
+              "category": r[10] if len(r) > 10 and r[10] else ("index" if "." in r[0] else "stock")} for r in rows]
+    # 类别过滤: category参数优先(index/etf/stock, 用DB列); 向后兼容etf=1(按symbol前缀)
+    # 默认(无category参数): 排除指数和ETF, 保持股票视图
     etf = request.args.get("etf", "0") == "1"
-    if etf:
+    cat = request.args.get("category", "")
+    if cat in ("index", "etf", "stock"):
+        items = [it for it in items if it.get("category") == cat]
+    elif etf:
         items = [it for it in items if it["symbol"][:2] in ("51", "15", "16", "56", "58") or it["symbol"].startswith("5")]
     else:
-        items = [it for it in items if not (it["symbol"][:2] in ("51", "15", "16", "56", "58") or it["symbol"].startswith("5"))]
+        items = [it for it in items if not (it["symbol"][:2] in ("51", "15", "16", "56", "58") or it["symbol"].startswith("5"))
+                 and "." not in it["symbol"]]
     items = _add_ret_pct(items)
     order = {"strong": 0, "neutral": 1, "weak": 2}
     items.sort(key=lambda x: (order.get(x["strength"], 1), -(x.get("score") or 50), x["type"], x["symbol"]))

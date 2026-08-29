@@ -118,7 +118,7 @@ export default function App() {
   const [picks, setPicks] = useState<PickRecord[]>([])
   const [pickDates, setPickDates] = useState<{ date: string; total: number }[]>([])
   const [selectedPickDate, setSelectedPickDate] = useState('')
-  const [sidebarTab, setSidebarTab] = useState<'watchlist' | 'picks' | 'laogao' | 'chanlun' | 'chanlun_etf'>('watchlist')
+  const [sidebarTab, setSidebarTab] = useState<'watchlist' | 'picks' | 'laogao' | 'chanlun' | 'chanlun_etf' | 'chanlun_index'>('watchlist')
   const [strategyFilter, setStrategyFilter] = useState('')  // '' = all
   const [laogaoPicks, setLaogaoPicks] = useState<import('./utils/api').LaogaoPick[]>([])
   const [laogaoDates, setLaogaoDates] = useState<{ date: string; total: number; worth_cnt: number }[]>([])
@@ -129,6 +129,7 @@ export default function App() {
   const [chanlunTypeFilter, setChanlunTypeFilter] = useState('')
   const [chanlunPreview, setChanlunPreview] = useState(false)  // 盘中预览模式
   const [chanlunEtf, setChanlunEtf] = useState(false)  // 缠论tab: 只看ETF信号
+  const [chanlunIndex, setChanlunIndex] = useState(false)  // 缠论tab: 只看指数信号
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null)
   const [measureMode, setMeasureMode] = useState(typeof savedToggles.measureMode === 'boolean' ? savedToggles.measureMode : false)
   const [chanlunMode, setChanlunMode] = useState(true)  // 默认选中缠(笔/中枢/买卖点)
@@ -257,9 +258,10 @@ export default function App() {
     let cancelled = false
     const pv = chanlunPreview ? '&preview=1' : ''
     const ev = chanlunEtf ? '&etf=1' : ''
+    const cv = chanlunIndex ? '&category=index' : ''
     const q = chanlunTypeFilter
-      ? `/stockscope/api/chanlun/dates?type=${encodeURIComponent(chanlunTypeFilter)}${pv}${ev}`
-      : `/stockscope/api/chanlun/dates${(pv || ev) ? '?' + [pv.replace(/^&/, ''), ev.replace(/^&/, '')].filter(Boolean).join('&') : ''}`
+      ? `/stockscope/api/chanlun/dates?type=${encodeURIComponent(chanlunTypeFilter)}${pv}${ev}${cv}`
+      : `/stockscope/api/chanlun/dates${(pv || ev || cv) ? '?' + [pv.replace(/^&/, ''), ev.replace(/^&/, ''), cv.replace(/^&/, '')].filter(Boolean).join('&') : ''}`
     fetch(q).then(r => r.json()).then((dates: { date: string; total: number }[]) => {
       if (cancelled) return
       setChanlunDates(dates)
@@ -270,20 +272,20 @@ export default function App() {
       }
     })
     return () => { cancelled = true }
-  }, [chanlunTypeFilter, chanlunPreview, chanlunEtf])
+  }, [chanlunTypeFilter, chanlunPreview, chanlunEtf, chanlunIndex])
 
   useEffect(() => {
     let cancelled = false
     if (selectedChanlunDate) {
       setChanlunSignals([])
       const pv = chanlunPreview ? '&preview=1' : ''
-      const q = `/stockscope/api/chanlun/signals?date=${selectedChanlunDate}${chanlunTypeFilter ? `&type=${encodeURIComponent(chanlunTypeFilter)}` : ''}${pv}${chanlunEtf ? '&etf=1' : ''}`
+      const q = `/stockscope/api/chanlun/signals?date=${selectedChanlunDate}${chanlunTypeFilter ? `&type=${encodeURIComponent(chanlunTypeFilter)}` : ''}${pv}${chanlunEtf ? '&etf=1' : ''}${chanlunIndex ? '&category=index' : ''}`
       fetch(q).then(r => r.json()).then(data => {
         if (!cancelled) setChanlunSignals(data)
       })
     }
     return () => { cancelled = true }
-  }, [selectedChanlunDate, chanlunTypeFilter, chanlunPreview, chanlunEtf])
+  }, [selectedChanlunDate, chanlunTypeFilter, chanlunPreview, chanlunEtf, chanlunIndex])
 
   // Load K-line for current stock
   const loadStock = useCallback(async (symbol: string, name: string, signalDate?: string) => {
@@ -780,11 +782,15 @@ export default function App() {
               🎯 底部确认 <span className="wl-count">{laogaoDates.length}天</span>
             </button>
           <button className={`wl-tab ${sidebarTab === 'chanlun_etf' ? 'active' : ''}`}
-            onClick={() => { setSidebarTab('chanlun_etf'); setChanlunEtf(true) }}>
+            onClick={() => { setSidebarTab('chanlun_etf'); setChanlunEtf(true); setChanlunIndex(false) }}>
               📐 缠论ETF <span className="wl-count">{chanlunDates.length}天</span>
             </button>
+          <button className={`wl-tab ${sidebarTab === 'chanlun_index' ? 'active' : ''}`}
+            onClick={() => { setSidebarTab('chanlun_index'); setChanlunEtf(false); setChanlunIndex(true) }}>
+              📊 指数 <span className="wl-count">{chanlunDates.length}天</span>
+            </button>
           <button className={`wl-tab ${sidebarTab === 'chanlun' ? 'active' : ''}`}
-            onClick={() => { setSidebarTab('chanlun'); setChanlunEtf(false) }}>
+            onClick={() => { setSidebarTab('chanlun'); setChanlunEtf(false); setChanlunIndex(false) }}>
               📐 缠论 <span className="wl-count">{chanlunDates.length}天</span>
             </button>
           </div>
@@ -876,7 +882,7 @@ export default function App() {
                 ))
               )}
             </div>
-          ) : sidebarTab === 'chanlun' || sidebarTab === 'chanlun_etf' ? (
+          ) : sidebarTab === 'chanlun' || sidebarTab === 'chanlun_etf' || sidebarTab === 'chanlun_index' ? (
             <div className="watchlist-items">
               {/* 类型过滤 */}
               <div className="picks-strategy-bar" style={{ padding: '4px 8px', borderBottom: '1px solid var(--border)' }}>
