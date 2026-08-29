@@ -775,23 +775,23 @@ export default function App() {
           </button>
           <button className={`wl-tab ${sidebarTab === 'picks' ? 'active' : ''}`}
             onClick={() => setSidebarTab('picks')}>
-              📋 选股 <span className="wl-count">{pickDates.length}天</span>
+              📋 趋势选股
             </button>
           <button className={`wl-tab ${sidebarTab === 'laogao' ? 'active' : ''}`}
             onClick={() => setSidebarTab('laogao')}>
-              🎯 底部确认 <span className="wl-count">{laogaoDates.length}天</span>
-            </button>
-          <button className={`wl-tab ${sidebarTab === 'chanlun_etf' ? 'active' : ''}`}
-            onClick={() => { setSidebarTab('chanlun_etf'); setChanlunEtf(true); setChanlunIndex(false) }}>
-              📐 缠论ETF <span className="wl-count">{chanlunDates.length}天</span>
+              🎯 底部确认
             </button>
           <button className={`wl-tab ${sidebarTab === 'chanlun_index' ? 'active' : ''}`}
             onClick={() => { setSidebarTab('chanlun_index'); setChanlunEtf(false); setChanlunIndex(true) }}>
-              📊 指数 <span className="wl-count">{chanlunDates.length}天</span>
+              📊 缠论指数
+            </button>
+          <button className={`wl-tab ${sidebarTab === 'chanlun_etf' ? 'active' : ''}`}
+            onClick={() => { setSidebarTab('chanlun_etf'); setChanlunEtf(true); setChanlunIndex(false) }}>
+              📐 缠论ETF
             </button>
           <button className={`wl-tab ${sidebarTab === 'chanlun' ? 'active' : ''}`}
             onClick={() => { setSidebarTab('chanlun'); setChanlunEtf(false); setChanlunIndex(false) }}>
-              📐 缠论 <span className="wl-count">{chanlunDates.length}天</span>
+              📐 缠论
             </button>
           </div>
 
