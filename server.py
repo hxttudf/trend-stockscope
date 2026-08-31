@@ -1087,10 +1087,10 @@ def api_board_matrix():
                 if strength == 'strong':
                     a[2] += 1
                 a[3] += 1
-        # 板块排序: buy=买入共振分(近3日加权: 买×2+强×1+卖×0.4, 时间衰减1.0/0.7/0.5, 回测胜率76%)
-        #           sell=卖压纯度(近3日加权: 信号数×(卖占比)², 时间衰减, 回测ρ=-0.111 Top组次日-0.30%)
-        near_dates = dates[-3:] if len(dates) >= 3 else dates
-        w_map = {d: w for d, w in zip(reversed(near_dates), [1.0, 0.7, 0.5][:len(near_dates)])}
+        # 板块排序: 取最近1个交易日(回测: 买入1日ρ+0.106>3日ρ+0.082; 卖出1日ρ-0.177≈3日2倍, 信号新鲜度更高)
+        #           buy=买入共振分(买×2+强×1+卖×0.4): 正相关窗口63% / sell=卖压纯度(信号数×(卖占比)²): 负相关窗口76%
+        near_dates = dates[-1:] if dates else []
+        w_map = {d: 1.0 for d in near_dates}
         board_stats = {}
         for (concept, sdate), (b, s, st, t) in agg.items():
             if sdate not in near_dates:
@@ -1195,6 +1195,83 @@ def api_board_signals():
         # 距今涨跌幅(信号日T+1收盘→最新收盘, 与缠论tab同口径)
         out = _add_ret_pct(out, buy_mode='t1')
         return jsonify({"items": out, "date": date, "concept": concept, "dimension": dimension})
+    finally:
+        conn.close()
+        ccon.close()
+
+
+@app.route("/api/board/ranks")
+def api_board_ranks():
+    """单只股票所属板块在指定信号日的共振排名. 参数 symbol=代码&date=YYYY-MM-DD&dimension=concept
+    返回每个所属板块: 当日买/卖/强信号数、买入共振分、全市场排名(同矩阵排序口径: 当日买×2+强×1+卖×0.4)"""
+    symbol = request.args.get("symbol", "").zfill(6)
+    date = request.args.get("date", "")
+    dimension = request.args.get("dimension", "concept")
+    if not symbol or not date:
+        return jsonify({"items": [], "error": "symbol/date required"})
+    conn = db_conn(TREND_DB)
+    ccon = db_conn(CONCEPT_DB)
+    try:
+        # 该股所属板块 + 所属板块当日成分信号
+        try:
+            my_boards = [r[0] for r in ccon.execute(
+                "SELECT concept FROM concept_members WHERE code=? AND dimension=?",
+                (symbol, dimension)).fetchall()]
+        except Exception:
+            my_boards = []
+        if not my_boards:
+            return jsonify({"items": [], "error": "该股无板块归属", "symbol": symbol})
+        # 黑名单过滤
+        my_boards = [b for b in my_boards if b not in BOARD_BLACKLIST]
+        # 该日全市场信号 → 各板块聚合(同矩阵口径)
+        sigs = conn.execute(
+            "SELECT symbol, signal_type, strength FROM chanlun_signals "
+            "WHERE signal_date=? AND status='ok' AND category!='index'", (date,)).fetchall()
+        agg = {}
+        try:
+            mem = ccon.execute(
+                "SELECT code, concept FROM concept_members WHERE dimension=?", (dimension,)).fetchall()
+        except Exception:
+            mem = []
+        cmap = {}
+        for code, concept in mem:
+            cmap.setdefault(code.zfill(6), set()).add(concept)
+        for s, stp, strength in sigs:
+            for concept in cmap.get(s.zfill(6), ()):
+                if concept in BOARD_BLACKLIST:
+                    continue
+                a = agg.setdefault(concept, [0, 0, 0, 0])
+                if stp in ('一买', '二买', '三买'):
+                    a[0] += 1
+                else:
+                    a[1] += 1
+                if strength == 'strong':
+                    a[2] += 1
+                a[3] += 1
+        # 全市场排名(买入共振分: 买×2+强×1+卖×0.4)
+        ranked = sorted(agg.items(), key=lambda kv: -(kv[1][0] * 2 + kv[1][2] * 1.0 + kv[1][1] * 0.4))
+        total = len(ranked)
+        rank_map = {c: i + 1 for i, (c, _) in enumerate(ranked)}
+        # 该股在所属板块内是否贡献信号(当日该股是否有信号)
+        my_sig_types = [r[0] for r in conn.execute(
+            "SELECT signal_type FROM chanlun_signals WHERE symbol=? AND signal_date=? AND status='ok'", (symbol, date)).fetchall()]
+        items = []
+        for b in my_boards:
+            a = agg.get(b, [0, 0, 0, 0])
+            rank = rank_map.get(b)
+            if rank is None:
+                continue  # 板块当日无信号, 不展示
+            items.append({
+                "concept": b,
+                "rank": rank,
+                "total": total,
+                "buy": a[0], "sell": a[1], "strong": a[2],
+                "score": round(a[0] * 2 + a[2] * 1.0 + a[1] * 0.4, 1),
+                "has_my_signal": bool(my_sig_types),
+                "my_types": my_sig_types,
+            })
+        items.sort(key=lambda x: x["rank"])
+        return jsonify({"items": items, "symbol": symbol, "date": date, "dimension": dimension})
     finally:
         conn.close()
         ccon.close()
