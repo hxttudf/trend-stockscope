@@ -1009,6 +1009,9 @@ def api_board_matrix():
     if dimension not in ("concept", "industry", "region"):
         dimension = "concept"
     preview = request.args.get("preview", "0") == "1"
+    sort_mode = request.args.get("sort", "buy")  # buy=买入共振分 / sell=卖压纯度
+    if sort_mode not in ("buy", "sell"):
+        sort_mode = "buy"
     conn = db_conn(TREND_DB)
     try:
         # 版本key = 最新日期(正式signal_date 或 盘中最新批次signal_date)
@@ -1018,7 +1021,7 @@ def api_board_matrix():
             ver = conn.execute("SELECT MAX(signal_date) FROM chanlun_signals WHERE status='ok'").fetchone()[0] or ""
     finally:
         conn.close()
-    ck = f"board_matrix|{days}|{dimension}|{preview and 1 or 0}|{ver}"
+    ck = f"board_matrix|{days}|{dimension}|{preview and 1 or 0}|{sort_mode}|{ver}"
     # DB持久化缓存: 命中直接返回
     cc = db_conn(TREND_DB)
     try:
@@ -1084,7 +1087,8 @@ def api_board_matrix():
                 if strength == 'strong':
                     a[2] += 1
                 a[3] += 1
-        # 板块排序: 买入共振分(近3日加权: 买×2 + 强×1 + 卖×0.4, 时间衰减 1.0/0.7/0.5) — 回测胜率最高
+        # 板块排序: buy=买入共振分(近3日加权: 买×2+强×1+卖×0.4, 时间衰减1.0/0.7/0.5, 回测胜率76%)
+        #           sell=卖压纯度(近3日加权: 信号数×(卖占比)², 时间衰减, 回测ρ=-0.111 Top组次日-0.30%)
         near_dates = dates[-3:] if len(dates) >= 3 else dates
         w_map = {d: w for d, w in zip(reversed(near_dates), [1.0, 0.7, 0.5][:len(near_dates)])}
         board_stats = {}
@@ -1092,7 +1096,11 @@ def api_board_matrix():
             if sdate not in near_dates:
                 continue
             w = w_map.get(sdate, 0.5)
-            board_stats[concept] = board_stats.get(concept, 0.0) + w * (b * 2 + st * 1.0 + s * 0.4)
+            if sort_mode == 'sell':
+                ratio = s / t if t > 0 else 0.0
+                board_stats[concept] = board_stats.get(concept, 0.0) + w * t * ratio * ratio
+            else:
+                board_stats[concept] = board_stats.get(concept, 0.0) + w * (b * 2 + st * 1.0 + s * 0.4)
         boards = sorted(board_stats.items(),
                         key=lambda kv: (-kv[1], kv[0]))
         # 矩阵数据: 每个板块每日期 (buy, sell, strong)
@@ -1104,7 +1112,7 @@ def api_board_matrix():
                 b, s, st, t = agg.get((concept, d), [0, 0, 0, 0])
                 row["cells"].append({"date": d, "buy": b, "sell": s, "strong": st, "total": t})
             rows.append(row)
-        out = {"dates": dates, "boards": rows, "dimension": dimension, "preview": preview}
+        out = {"dates": dates, "boards": rows, "dimension": dimension, "preview": preview, "sort": sort_mode}
         # DB持久化缓存
         cc = db_conn(TREND_DB)
         try:

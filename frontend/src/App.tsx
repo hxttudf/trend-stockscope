@@ -133,6 +133,7 @@ export default function App() {
   const [boardDays, setBoardDays] = useState(15)
   const [boardDim, setBoardDim] = useState('concept')  // concept|industry|region
   const [boardPreview, setBoardPreview] = useState(false)  // 盘中预览
+  const [boardSort, setBoardSort] = useState('buy')  // buy=买入共振 / sell=卖压纯度
   const [boardSel, setBoardSel] = useState<{ date: string; concept: string } | null>(null)
   const [boardSignals, setBoardSignals] = useState<any[]>([])
   const [boardLoading, setBoardLoading] = useState(false)
@@ -302,7 +303,7 @@ export default function App() {
     let cancelled = false
     if (sidebarTab === 'chanlun_board') {
       setBoardLoading(true)
-      fetch(`/stockscope/api/board/matrix?days=${boardDays}&dimension=${boardDim}${boardPreview ? '&preview=1' : ''}`).then(r => r.json()).then(d => {
+      fetch(`/stockscope/api/board/matrix?days=${boardDays}&dimension=${boardDim}${boardPreview ? '&preview=1' : ''}&sort=${boardSort}`).then(r => r.json()).then(d => {
         if (cancelled) return
         setBoardMatrix(d)
         setBoardLoading(false)
@@ -315,7 +316,7 @@ export default function App() {
       }).catch(() => { if (!cancelled) setBoardLoading(false) })
     }
     return () => { cancelled = true }
-  }, [sidebarTab, boardDays, boardDim, boardPreview])
+  }, [sidebarTab, boardDays, boardDim, boardPreview, boardSort])
 
   // ── 缠论板块共振: 选中格子→加载信号列表 ──
   useEffect(() => {
@@ -785,6 +786,13 @@ export default function App() {
                     title="盘中预览: 用最新盘中批次信号(未确认); 关闭=正式已确认信号"
                     style={{ fontSize: 11, padding: '2px 6px', cursor: 'pointer', color: boardPreview ? '#a371f7' : undefined, borderColor: boardPreview ? '#a371f7' : undefined }}>
                     🕐 盘中{boardPreview ? 'ON' : 'OFF'}
+                  </span>
+                  <span
+                    className={`range-btn ${boardSort === 'sell' ? 'active' : ''}`}
+                    onClick={() => setBoardSort(boardSort === 'buy' ? 'sell' : 'buy')}
+                    title="排序: 买入共振=买点聚集板块优先(回测胜率76%) / 卖压纯度=卖压集中板块优先(回测ρ-0.111)"
+                    style={{ fontSize: 11, padding: '2px 6px', cursor: 'pointer', color: boardSort === 'sell' ? '#58a6ff' : '#f0883e', borderColor: boardSort === 'sell' ? '#58a6ff' : '#f0883e' }}>
+                    {boardSort === 'buy' ? '🔴 买入共振' : '🟢 卖压纯度'}
                   </span>
                 </span>
                 <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>格子 x/y: 买/卖信号数 · 红=买多 绿=卖多 灰=相持 · 点击看明细</span>
