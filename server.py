@@ -1084,17 +1084,17 @@ def api_board_matrix():
                 if strength == 'strong':
                     a[2] += 1
                 a[3] += 1
-        # 板块排序: 最近3个交易日总信号数降序(次级=买信号数, 再按名称)
-        near_dates = set(dates[-3:] if len(dates) >= 3 else dates)
+        # 板块排序: 买入共振分(近3日加权: 买×2 + 强×1 + 卖×0.4, 时间衰减 1.0/0.7/0.5) — 回测胜率最高
+        near_dates = dates[-3:] if len(dates) >= 3 else dates
+        w_map = {d: w for d, w in zip(reversed(near_dates), [1.0, 0.7, 0.5][:len(near_dates)])}
         board_stats = {}
         for (concept, sdate), (b, s, st, t) in agg.items():
             if sdate not in near_dates:
                 continue
-            st0 = board_stats.setdefault(concept, [0, 0])  # total10d, buy10d
-            st0[0] += t
-            st0[1] += b
+            w = w_map.get(sdate, 0.5)
+            board_stats[concept] = board_stats.get(concept, 0.0) + w * (b * 2 + st * 1.0 + s * 0.4)
         boards = sorted(board_stats.items(),
-                        key=lambda kv: (-kv[1][0], -kv[1][1], kv[0]))
+                        key=lambda kv: (-kv[1], kv[0]))
         # 矩阵数据: 每个板块每日期 (buy, sell, strong)
         board_names = [c for c, _ in boards]
         rows = []
