@@ -132,6 +132,7 @@ export default function App() {
   const [boardMatrix, setBoardMatrix] = useState<{ dates: string[]; boards: { name: string; cells: { date: string; buy: number; sell: number; strong: number; total: number }[] }[] } | null>(null)
   const [boardDays, setBoardDays] = useState(15)
   const [boardDim, setBoardDim] = useState('concept')  // concept|industry|region
+  const [boardPreview, setBoardPreview] = useState(false)  // 盘中预览
   const [boardSel, setBoardSel] = useState<{ date: string; concept: string } | null>(null)
   const [boardSignals, setBoardSignals] = useState<any[]>([])
   const [boardLoading, setBoardLoading] = useState(false)
@@ -299,7 +300,7 @@ export default function App() {
     let cancelled = false
     if (sidebarTab === 'chanlun_board') {
       setBoardLoading(true)
-      fetch(`/stockscope/api/board/matrix?days=${boardDays}&dimension=${boardDim}`).then(r => r.json()).then(d => {
+      fetch(`/stockscope/api/board/matrix?days=${boardDays}&dimension=${boardDim}${boardPreview ? '&preview=1' : ''}`).then(r => r.json()).then(d => {
         if (cancelled) return
         setBoardMatrix(d)
         setBoardLoading(false)
@@ -312,18 +313,18 @@ export default function App() {
       }).catch(() => { if (!cancelled) setBoardLoading(false) })
     }
     return () => { cancelled = true }
-  }, [sidebarTab, boardDays, boardDim])
+  }, [sidebarTab, boardDays, boardDim, boardPreview])
 
   // ── 缠论板块共振: 选中格子→加载信号列表 ──
   useEffect(() => {
     let cancelled = false
     if (sidebarTab === 'chanlun_board' && boardSel) {
       setBoardSignals([])
-      fetch(`/stockscope/api/board/signals?date=${boardSel.date}&concept=${encodeURIComponent(boardSel.concept)}&dimension=${boardDim}`)
+      fetch(`/stockscope/api/board/signals?date=${boardSel.date}&concept=${encodeURIComponent(boardSel.concept)}&dimension=${boardDim}${boardPreview ? '&preview=1' : ''}`)
         .then(r => r.json()).then(d => { if (!cancelled) setBoardSignals(d.items ?? []) })
     }
     return () => { cancelled = true }
-  }, [sidebarTab, boardSel, boardDim])
+  }, [sidebarTab, boardSel, boardDim, boardPreview])
 
   // Load K-line for current stock
   const loadStock = useCallback(async (symbol: string, name: string, signalDate?: string) => {
@@ -769,13 +770,20 @@ export default function App() {
         <div className="chart-area">
           {sidebarTab === 'chanlun_board' ? (
             <div style={{ flex: 1, position: 'relative', minHeight: 0, display: 'flex', flexDirection: 'column', padding: 12, boxSizing: 'border-box', height: '100%' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10, flexShrink: 0, height: 'auto' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10, flexShrink: 0, height: 'auto', flexWrap: 'wrap' }}>
                 <span style={{ fontSize: 15, fontWeight: 600 }}>缠论板块共振</span>
                 <span style={{ display: 'flex', gap: 4, alignItems: 'center', fontSize: 11 }}>
                   {[['concept', '概念'], ['industry', '行业'], ['region', '地域']].map(([v, l]) => (
                     <button key={v} className={`range-btn ${boardDim === v ? 'active' : ''}`}
                       onClick={() => setBoardDim(v)} style={{ fontSize: 11, padding: '2px 8px' }}>{l}</button>
                   ))}
+                  <span
+                    className={`range-btn ${boardPreview ? 'active' : ''}`}
+                    onClick={() => setBoardPreview(!boardPreview)}
+                    title="盘中预览: 用最新盘中批次信号(未确认); 关闭=正式已确认信号"
+                    style={{ fontSize: 11, padding: '2px 6px', cursor: 'pointer', color: boardPreview ? '#a371f7' : undefined, borderColor: boardPreview ? '#a371f7' : undefined }}>
+                    🕐 盘中{boardPreview ? 'ON' : 'OFF'}
+                  </span>
                 </span>
                 <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>格子 x/y: 买/卖信号数 · 红=买多 绿=卖多 灰=相持 · 点击看明细</span>
                 <span style={{ marginLeft: 'auto', display: 'flex', gap: 4, alignItems: 'center', fontSize: 11 }}>
@@ -786,43 +794,45 @@ export default function App() {
                   ))}
                 </span>
               </div>
-              {boardLoading && !boardMatrix ? (
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-muted)' }}>加载中...</div>
-              ) : !boardMatrix?.boards?.length ? (
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-muted)', flexDirection: 'column', gap: 8 }}>
-                  <div style={{ fontSize: 32 }}>🗂️</div>
-                  <div>暂无板块信号数据（需先跑 fetch_concepts.py 生成板块映射）</div>
-                </div>
-              ) : (
-                <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+              <div style={{ flex: 1, overflow: 'auto', minHeight: 0, height: 'auto' }}>
+                {boardLoading && !boardMatrix ? (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-muted)' }}>加载中...</div>
+                ) : !boardMatrix?.boards?.length ? (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-muted)', flexDirection: 'column', gap: 8 }}>
+                    <div style={{ fontSize: 32 }}>🗂️</div>
+                    <div>暂无板块信号数据（需先跑 fetch_concepts.py 生成板块映射）</div>
+                  </div>
+                ) : (
                   <div style={{ display: 'inline-block', minWidth: '100%' }}>
-                    {/* 表头: 日期 (倒序: 最新在左) */}
+                    {/* 表头: 日期 (倒序: 最新在左) — 与格子同宽56+margin1=58 */}
                     <div style={{ display: 'flex', position: 'sticky', top: 0, background: 'var(--bg, #0d1117)', zIndex: 2, borderBottom: '1px solid var(--border)', paddingBottom: 4 }}>
-                      <div style={{ width: 110, flexShrink: 0, fontSize: 11, color: 'var(--text-muted)' }}>板块</div>
+                      <div style={{ width: 110, flexShrink: 0, fontSize: 11, color: 'var(--text-muted)', marginRight: 1 }}>板块</div>
                       {[...boardMatrix.dates].reverse().map(d => (
-                        <div key={d} style={{ width: 56, flexShrink: 0, textAlign: 'center', fontSize: 10, color: 'var(--text-muted)' }}>{d.slice(5)}</div>
+                        <div key={d} style={{ width: 56, flexShrink: 0, textAlign: 'center', fontSize: 10, color: 'var(--text-muted)', margin: '0 1px' }}>{d.slice(5)}</div>
                       ))}
                     </div>
                     {/* 行: 板块 */}
                     {boardMatrix.boards.map(b => (
                       <div key={b.name} style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid var(--border-subtle, rgba(240,246,252,0.06))' }}>
-                        <div style={{ width: 110, flexShrink: 0, fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 6 }} title={b.name}>{b.name}</div>
+                        <div style={{ width: 110, flexShrink: 0, fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 6, marginRight: 1 }} title={b.name}>{b.name}</div>
                         {[...b.cells].reverse().map(c => {
                           const total = c.buy + c.sell
                           const isSel = boardSel?.date === c.date && boardSel?.concept === b.name
                           let bg = 'transparent'
                           let fg = '#fff'
                           if (total > 0) {
-                            const ratio = c.buy / total  // 1=纯买 0=纯卖
+                            const ratio = c.buy / total  // 1=纯买 0=纯卖 0.5=相持
                             const alpha = Math.min(0.25 + total * 0.06, 0.85)
-                            if (ratio >= 0.6) {
-                              bg = `rgba(248,81,73,${alpha})`          // 买入为主: 红
-                            } else if (ratio <= 0.4) {
-                              bg = `rgba(63,185,80,${alpha * 0.9})`    // 卖出为主: 绿
+                            if (ratio === 0.5) {
+                              bg = `rgba(150,150,150,${alpha * 0.8})`      // 买卖一样多: 纯灰
+                            } else if (ratio > 0.6) {
+                              bg = `rgba(248,81,73,${alpha})`              // 买入为主: 红
+                            } else if (ratio < 0.4) {
+                              bg = `rgba(63,185,80,${alpha * 0.9})`        // 卖出为主: 绿
                             } else if (ratio > 0.5) {
-                              bg = `rgba(210,150,150,${alpha * 0.8})`  // 相持偏红: 灰偏红
+                              bg = `rgba(210,150,150,${alpha * 0.8})`      // 相持偏红: 灰偏红
                             } else {
-                              bg = `rgba(150,210,160,${alpha * 0.8})`  // 相持偏绿: 灰偏绿
+                              bg = `rgba(150,210,160,${alpha * 0.8})`      // 相持偏绿: 灰偏绿
                             }
                           }
                           return (
@@ -831,7 +841,7 @@ export default function App() {
                               title={`${b.name} ${c.date}\n买${c.buy} 卖${c.sell}${c.strong ? ` 强${c.strong}` : ''}`}
                               style={{
                                 width: 56, height: 30, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                fontSize: 10, cursor: total > 0 ? 'pointer' : 'default', background: bg, margin: 1, borderRadius: 3,
+                                fontSize: 10, cursor: total > 0 ? 'pointer' : 'default', background: bg, margin: '1px', borderRadius: 3,
                                 color: total > 0 ? fg : 'transparent', fontWeight: c.strong > 0 ? 700 : 400,
                                 outline: isSel ? '2px solid #a371f7' : 'none',
                               }}>
@@ -842,6 +852,35 @@ export default function App() {
                       </div>
                     ))}
                   </div>
+                )}
+              </div>
+              {/* 下方K线: 点击信号标的后显示(矩阵+K线同屏) */}
+              {currentStock && kline && sidebarTab === 'chanlun_board' && (
+                <div style={{ height: '42%', minHeight: 200, flexShrink: 0, borderTop: '1px solid var(--border)', paddingTop: 6, position: 'relative' }}>
+                  <div style={{ position: 'absolute', top: 8, right: 10, zIndex: 5, display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{currentStock.name} {currentStock.symbol}</span>
+                    <button className="range-btn" onClick={() => { setCurrentStock(null); setKline(null) }}
+                      style={{ fontSize: 11, padding: '1px 8px', cursor: 'pointer' }}>关闭K线</button>
+                  </div>
+                  <Chart
+                    kline={kline?.kline ?? []}
+                    signals={kline?.signals ?? []}
+                    symbol={currentStock?.symbol ?? ''}
+                    range={range.days}
+                    onCrosshairMove={handleCrosshairMove}
+                    onChartClick={handleChartClick}
+                    benchmarkTime={benchmarkIdx !== null && kline ? kline.kline[benchmarkIdx]?.time : null}
+                    highlightSignal={highlightSignal}
+                    focusDate={focusDate}
+                    chanlun={chanlunData}
+                    zsAsOf={zsAsOf}
+                    onZsRangeChange={loadZsAsOf}
+                    showAllZs={showAllZs}
+                    showTrend={showTrend}
+                    showBottom={showBottom}
+                    showBoll={showBoll}
+                    showMa={showMa}
+                  />
                 </div>
               )}
             </div>
@@ -1162,6 +1201,12 @@ export default function App() {
                       <span className="pick-tag" style={{ color: s.type.includes('买') ? '#f0883e' : '#58a6ff' }}>
                         {s.type}
                       </span>
+                      {s.ret_pct != null && (
+                        <span className="pick-tag" title="信号日收盘→最新收盘"
+                          style={{ color: s.ret_pct >= 0 ? '#f85149' : '#3fb950', fontWeight: 600 }}>
+                          {s.ret_pct >= 0 ? '+' : ''}{s.ret_pct}%
+                        </span>
+                      )}
                     </div>
                   </div>
                 ))

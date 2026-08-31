@@ -973,6 +973,7 @@ def get_bc_dates():
 
 # ── 缠论板块共振 (热力矩阵 + 板块信号) ────────────────────────
 CONCEPT_DB = "/home/ubuntu/databases/concept_map.db"
+_board_cache = {}  # (days, dimension, max_signal_date) -> (ts, json) 300s TTL
 BOARD_BLACKLIST = {'昨日涨停', '昨日涨停_含一字', '昨日首板', '昨日连板', '东方财富热股',
                    '融资融券', '转融券标的', '机构重仓', '基金重仓', '深股通', '沪股通',
                    'MSCI中国', '标准普尔', '富时罗素', 'AH股', '破净股', '低价股', '高送转',
@@ -987,7 +988,9 @@ BUY_TYPES = {'一买', '二买', '三买'}
 
 @app.route("/api/board/matrix")
 def api_board_matrix():
-    """热力矩阵: 近N日 板块×日期 买/卖信号数. 参数 days=N(默认15)&dimension=concept|industry|region"""
+    """热力矩阵: 近N日 板块×日期 买/卖信号数. 参数 days=N(默认15)&dimension=concept|industry|region&preview=0/1
+    preview=1: 用盘中预览批次日(preview_signals batch_date); 否则用正式信号日(chanlun_signals signal_date)
+    持久化: board_matrix_cache 表(以days|dimension|preview|最新日期为key), 命中直接返回"""
     try:
         days = int(request.args.get("days", 15))
     except Exception:
@@ -996,16 +999,42 @@ def api_board_matrix():
     dimension = request.args.get("dimension", "concept")
     if dimension not in ("concept", "industry", "region"):
         dimension = "concept"
+    preview = request.args.get("preview", "0") == "1"
+    conn = db_conn(TREND_DB)
+    try:
+        # 版本key = 最新日期(正式signal_date 或 盘中batch_date)
+        if preview:
+            ver = conn.execute("SELECT MAX(batch_date) FROM preview_signals").fetchone()[0] or ""
+        else:
+            ver = conn.execute("SELECT MAX(signal_date) FROM chanlun_signals WHERE status='ok'").fetchone()[0] or ""
+    finally:
+        conn.close()
+    ck = f"board_matrix|{days}|{dimension}|{preview and 1 or 0}|{ver}"
+    # DB持久化缓存: 命中直接返回
+    cc = db_conn(TREND_DB)
+    try:
+        cc.execute("CREATE TABLE IF NOT EXISTS board_matrix_cache "
+                   "(cache_key TEXT PRIMARY KEY, payload TEXT, updated_at TEXT)")
+        hit = cc.execute("SELECT payload FROM board_matrix_cache WHERE cache_key=?", (ck,)).fetchone()
+        if hit and hit[0]:
+            return jsonify(json.loads(hit[0]))
+    finally:
+        cc.close()
     conn = db_conn(TREND_DB)
     ccon = db_conn(CONCEPT_DB)
     try:
-        # 最近N个有信号的交易日
-        dates = [r[0] for r in conn.execute(
-            "SELECT DISTINCT signal_date FROM chanlun_signals WHERE status='ok' "
-            "ORDER BY signal_date DESC LIMIT ?", (days,)).fetchall()]
+        # 最近N个日期(盘中=batch_date / 正式=signal_date), 只取非指数
+        if preview:
+            dates = [r[0] for r in conn.execute(
+                "SELECT DISTINCT batch_date FROM preview_signals WHERE category!='index' "
+                "ORDER BY batch_date DESC LIMIT ?", (days,)).fetchall()]
+        else:
+            dates = [r[0] for r in conn.execute(
+                "SELECT DISTINCT signal_date FROM chanlun_signals WHERE status='ok' AND category!='index' "
+                "ORDER BY signal_date DESC LIMIT ?", (days,)).fetchall()]
         dates = list(reversed(dates))  # 旧→新
         if not dates:
-            return jsonify({"dates": [], "boards": [], "signals": []})
+            return jsonify({"dates": [], "boards": [], "dimension": dimension, "preview": preview})
         ph = ",".join("?" * len(dates))
         # 概念映射(按维度)
         try:
@@ -1017,10 +1046,16 @@ def api_board_matrix():
         for code, concept in mem:
             cmap.setdefault(code.zfill(6), set()).add(concept)
         # 聚合 (concept, date) -> [buy, sell, strong, total]
-        sigs2 = conn.execute(
-            f"SELECT symbol, signal_type, strength, signal_date FROM chanlun_signals "
-            f"WHERE signal_date IN ({ph}) AND status='ok' AND category!='index'",
-            dates).fetchall()
+        if preview:
+            sigs2 = conn.execute(
+                f"SELECT symbol, signal_type, strength, batch_date FROM preview_signals "
+                f"WHERE batch_date IN ({ph}) AND category!='index'",
+                dates).fetchall()
+        else:
+            sigs2 = conn.execute(
+                f"SELECT symbol, signal_type, strength, signal_date FROM chanlun_signals "
+                f"WHERE signal_date IN ({ph}) AND status='ok' AND category!='index'",
+                dates).fetchall()
         agg = {}
         for sym, stype, strength, sdate in sigs2:
             sym6 = sym.zfill(6)
@@ -1036,7 +1071,7 @@ def api_board_matrix():
                 if strength == 'strong':
                     a[2] += 1
                 a[3] += 1
-        # 板块列表 + 共振分(近3日买信号数×2 + 总信号数, 降序)
+        # 板块列表 + 共振分(近3日买信号数×2 + 总信号数, 降序) — 全量不截断
         board_stats = {}
         for (concept, sdate), (b, s, st, t) in agg.items():
             st0 = board_stats.setdefault(concept, [0, 0, 0])  # buy3d, total3d, maxbuy
@@ -1045,7 +1080,7 @@ def api_board_matrix():
                 st0[1] += t
             st0[2] = max(st0[2], b)
         boards = sorted(board_stats.items(),
-                        key=lambda kv: (-kv[1][0], -kv[1][1], kv[0]))[:40]
+                        key=lambda kv: (-kv[1][0], -kv[1][1], kv[0]))
         # 矩阵数据: 每个板块每日期 (buy, sell, strong)
         board_names = [c for c, _ in boards]
         rows = []
@@ -1055,7 +1090,20 @@ def api_board_matrix():
                 b, s, st, t = agg.get((concept, d), [0, 0, 0, 0])
                 row["cells"].append({"date": d, "buy": b, "sell": s, "strong": st, "total": t})
             rows.append(row)
-        return jsonify({"dates": dates, "boards": rows, "dimension": dimension})
+        out = {"dates": dates, "boards": rows, "dimension": dimension, "preview": preview}
+        # DB持久化缓存
+        cc = db_conn(TREND_DB)
+        try:
+            cc.execute("CREATE TABLE IF NOT EXISTS board_matrix_cache "
+                       "(cache_key TEXT PRIMARY KEY, payload TEXT, updated_at TEXT)")
+            cc.execute("INSERT OR REPLACE INTO board_matrix_cache VALUES (?,?,datetime('now','localtime'))",
+                       (ck, json.dumps(out, ensure_ascii=False)))
+            cc.commit()
+        except Exception:
+            pass
+        finally:
+            cc.close()
+        return jsonify(out)
     finally:
         conn.close()
         ccon.close()
@@ -1063,10 +1111,11 @@ def api_board_matrix():
 
 @app.route("/api/board/signals")
 def api_board_signals():
-    """某日某板块的信号明细. 参数 date=YYYY-MM-DD&concept=板块名&dimension=concept|industry|region"""
+    """某日某板块的信号明细. 参数 date=YYYY-MM-DD&concept=板块名&dimension=concept|industry|region&preview=0/1"""
     date = request.args.get("date", "")
     concept = request.args.get("concept", "")
     dimension = request.args.get("dimension", "concept")
+    preview = request.args.get("preview", "0") == "1"
     if not date or not concept:
         return jsonify({"items": [], "error": "date/concept required"})
     conn = db_conn(TREND_DB)
@@ -1081,32 +1130,45 @@ def api_board_signals():
         if not members:
             return jsonify({"items": [], "error": "板块无成分"})
         ph = ",".join("?" * len(members))
-        # 该板块当日信号(含名称/分数/强度) — 与缠论tab同字段
-        items = conn.execute(
-            f"SELECT symbol, name, signal_type, strength, strength_score, price, status "
-            f"FROM chanlun_signals WHERE signal_date=? AND status='ok' "
-            f"AND symbol IN ({ph}) AND category!='index' ORDER BY "
-            f"CASE signal_type WHEN '一买' THEN 1 WHEN '二买' THEN 2 WHEN '三买' THEN 3 "
-            f"WHEN '一卖' THEN 4 WHEN '二卖' THEN 5 WHEN '三卖' THEN 6 ELSE 7 END",
-            [date] + members).fetchall()
+        # 该板块当日信号(含名称/分数/强度) — 与缠论tab同字段; preview=盘中表
+        if preview:
+            items = conn.execute(
+                f"SELECT symbol, name, signal_type, strength, strength_score, price, status "
+                f"FROM preview_signals WHERE batch_date=? AND status='preview' "
+                f"AND symbol IN ({ph}) AND category!='index' ORDER BY "
+                f"CASE signal_type WHEN '一买' THEN 1 WHEN '二买' THEN 2 WHEN '三买' THEN 3 "
+                f"WHEN '一卖' THEN 4 WHEN '二卖' THEN 5 WHEN '三卖' THEN 6 ELSE 7 END",
+                [date] + members).fetchall()
+        else:
+            items = conn.execute(
+                f"SELECT symbol, name, signal_type, strength, strength_score, price, status "
+                f"FROM chanlun_signals WHERE signal_date=? AND status='ok' "
+                f"AND symbol IN ({ph}) AND category!='index' ORDER BY "
+                f"CASE signal_type WHEN '一买' THEN 1 WHEN '二买' THEN 2 WHEN '三买' THEN 3 "
+                f"WHEN '一卖' THEN 4 WHEN '二卖' THEN 5 WHEN '三卖' THEN 6 ELSE 7 END",
+                [date] + members).fetchall()
         # 合并同股多信号: 同一 symbol 多条 → 单条, types 拼进 type 字段
         merged = {}
         for r in items:
             sym = r[0]
             if sym not in merged:
                 merged[sym] = {"symbol": r[0], "name": r[1], "type": r[2], "strength": r[3],
-                               "score": r[4], "price": r[5], "status": r[6], "types": [r[2]]}
+                               "score": r[4], "price": r[5], "status": r[6], "date": date, "types": [r[2]]}
             else:
-                merged[sym]["types"].append(r[2])
-                # 类型排序: 按买卖类型顺序
-                order = {'一买': 1, '二买': 2, '三买': 3, '一卖': 4, '二卖': 5, '三卖': 6}
-                merged[sym]["types"].sort(key=lambda t: order.get(t, 9))
-                merged[sym]["type"] = "+".join(merged[sym]["types"])
+                # 类型去重(盘中多批次重复)+(二买+三买合并)
+                if r[2] not in merged[sym]["types"]:
+                    merged[sym]["types"].append(r[2])
+                    # 类型排序: 按买卖类型顺序
+                    order = {'一买': 1, '二买': 2, '三买': 3, '一卖': 4, '二卖': 5, '三卖': 6}
+                    merged[sym]["types"].sort(key=lambda t: order.get(t, 9))
+                    merged[sym]["type"] = "+".join(merged[sym]["types"])
                 # 强度取更强
                 prio = {'strong': 0, 'neutral': 1, 'weak': 2}
                 if prio.get(r[3], 1) < prio.get(merged[sym]["strength"], 1):
                     merged[sym]["strength"] = r[3]
         out = list(merged.values())
+        # 距今涨跌幅(信号日T+1收盘→最新收盘, 与缠论tab同口径)
+        out = _add_ret_pct(out, buy_mode='t1')
         return jsonify({"items": out, "date": date, "concept": concept, "dimension": dimension})
     finally:
         conn.close()
