@@ -30,8 +30,7 @@ def sync():
     ).fetchall()
     
     if not rows:
-        print(f"{TODAY} — no picks found in trend_picks.db")
-        # 无信号不写空摘要(避免前端显示0信号日期); 清理该日残留空记录
+        # 无信号为常态, 不刷屏(cron微信格式优化); 残留空记录仍清理
         scope_conn.execute(
             "DELETE FROM daily_summary WHERE date = ? AND total_picks <= 0", (TODAY,)
         )
