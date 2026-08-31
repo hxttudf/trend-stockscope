@@ -344,6 +344,13 @@ export default function App() {
     setSignals(data.signals)
     // 有指定信号日期则跳转到该日期，否则定位最新K线(不跳选股信号日期—选股信号可能很旧)
     setFocusDate(signalDate || null)
+    // 拉取该股所属板块共振排名(所有tab通用; date缺省=后端取该股最近信号日)
+    fetch(`/stockscope/api/board/ranks?symbol=${symbol}`)
+      .then(r => r.json()).then(r => {
+        if (seq !== loadSeq.current) return
+        setBoardRanks(r.items || null)
+        setShowBoardRanks(false)
+      }).catch(() => { if (seq === loadSeq.current) setBoardRanks(null) })
   }, [qfq, selectedPickDate])
 
   // Reload kline when qfq changes and a stock is selected
@@ -1006,6 +1013,44 @@ export default function App() {
               showMa={showMa}
             />
             </ChartErrorBoundary>
+            {/* 通用悬浮: 板块共振排名(所有tab), K线右上角 */}
+            {currentStock && boardRanks && boardRanks.length > 0 && (
+              <div style={{ position: 'absolute', top: 8, right: 10, zIndex: 15, display: 'flex', gap: 6, alignItems: 'center' }}>
+                <span className="range-btn"
+                  onClick={() => setShowBoardRanks(!showBoardRanks)}
+                  title="所属板块当日共振排名(买入共振分: 买×2+强×1-卖×0.3)"
+                  style={{ fontSize: 11, padding: '1px 8px', cursor: 'pointer',
+                    color: boardRanks[0].rank <= 50 ? '#f0883e' : 'var(--text-muted)',
+                    borderColor: boardRanks[0].rank <= 50 ? '#f0883e' : undefined,
+                    background: 'var(--bg, #0d1117)' }}>
+                  板块共振 {boardRanks.length}
+                </span>
+              </div>
+            )}
+            {currentStock && showBoardRanks && boardRanks && boardRanks.length > 0 && (
+              <div style={{
+                position: 'absolute', top: 36, right: 10, zIndex: 15, width: 320,
+                background: 'var(--bg, #0d1117)', border: '1px solid var(--border, #30363d)', borderRadius: 8,
+                boxShadow: '0 8px 24px rgba(0,0,0,0.5)', padding: '10px 12px', fontSize: 11,
+                maxHeight: '70%', overflow: 'auto' }}>
+                <div style={{ fontWeight: 600, marginBottom: 8, color: 'var(--text-muted)' }}>
+                  {currentStock.name} 所属板块共振排名 <span style={{ fontWeight: 400 }}>({boardPreview ? '盘中' : '正式'} 买入共振分)</span>
+                </div>
+                {boardRanks.map(b => (
+                  <div key={b.concept} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 0', borderBottom: '1px solid var(--border-subtle, rgba(240,246,252,0.06))' }}>
+                    <span style={{ width: 42, flexShrink: 0, fontWeight: 600, color: b.rank <= 50 ? '#f0883e' : 'var(--text-muted)' }}>#{b.rank}</span>
+                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.concept}</span>
+                    <span style={{ color: '#f0883e', fontWeight: 600 }}>{b.buy}买</span>
+                    <span style={{ color: '#58a6ff' }}>{b.sell}卖</span>
+                    {b.strong > 0 && <span style={{ color: '#3fb950' }}>{b.strong}强</span>}
+                    <span style={{ color: 'var(--text-muted)' }}>分{b.score}</span>
+                  </div>
+                ))}
+                <div style={{ marginTop: 8, fontSize: 10, color: 'var(--text-muted)' }}>
+                  全市场当日有信号板块 {boardRanks[0]?.total || '-'} 个 · #1 为买点最密集板块
+                </div>
+              </div>
+            )}
             {(!currentStock || !kline) && (
               <div style={{
                 position: 'absolute', inset: 0,

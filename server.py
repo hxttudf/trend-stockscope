@@ -1088,7 +1088,8 @@ def api_board_matrix():
                     a[2] += 1
                 a[3] += 1
         # 板块排序: 取最近1个交易日(回测: 买入1日ρ+0.106>3日ρ+0.082; 卖出1日ρ-0.177≈3日2倍, 信号新鲜度更高)
-        #           buy=买入共振分(买×2+强×1+卖×0.4): 正相关窗口63% / sell=卖压纯度(信号数×(卖占比)²): 负相关窗口76%
+        #           buy=买入共振分(买×2+强×1-卖×0.3, 卖压罚分): 回测ρ+0.175 正相关窗口32/38(84%), 杜绝纯卖板块霸榜
+        #           sell=卖压纯度(信号数×(卖占比)²): 负相关窗口76%
         near_dates = dates[-1:] if dates else []
         w_map = {d: 1.0 for d in near_dates}
         board_stats = {}
@@ -1100,7 +1101,7 @@ def api_board_matrix():
                 ratio = s / t if t > 0 else 0.0
                 board_stats[concept] = board_stats.get(concept, 0.0) + w * t * ratio * ratio
             else:
-                board_stats[concept] = board_stats.get(concept, 0.0) + w * (b * 2 + st * 1.0 + s * 0.4)
+                board_stats[concept] = board_stats.get(concept, 0.0) + w * (b * 2 + st * 1.0 - s * 0.3)
         boards = sorted(board_stats.items(),
                         key=lambda kv: (-kv[1], kv[0]))
         # 矩阵数据: 每个板块每日期 (buy, sell, strong)
@@ -1202,16 +1203,23 @@ def api_board_signals():
 
 @app.route("/api/board/ranks")
 def api_board_ranks():
-    """单只股票所属板块在指定信号日的共振排名. 参数 symbol=代码&date=YYYY-MM-DD&dimension=concept
-    返回每个所属板块: 当日买/卖/强信号数、买入共振分、全市场排名(同矩阵排序口径: 当日买×2+强×1+卖×0.4)"""
+    """单只股票所属板块在指定信号日的共振排名. 参数 symbol=代码&date=YYYY-MM-DD(可选,缺省=该股最近信号日)&dimension=concept
+    返回每个所属板块: 当日买/卖/强信号数、买入共振分、全市场排名(同矩阵排序口径: 当日买×2+强×1-卖×0.3)"""
     symbol = request.args.get("symbol", "").zfill(6)
     date = request.args.get("date", "")
     dimension = request.args.get("dimension", "concept")
-    if not symbol or not date:
-        return jsonify({"items": [], "error": "symbol/date required"})
+    if not symbol:
+        return jsonify({"items": [], "error": "symbol required"})
     conn = db_conn(TREND_DB)
     ccon = db_conn(CONCEPT_DB)
     try:
+        # date缺省: 取该股最近有信号的日期
+        if not date:
+            r = conn.execute(
+                "SELECT MAX(signal_date) FROM chanlun_signals WHERE symbol=? AND status='ok'", (symbol,)).fetchone()
+            date = r[0] if r and r[0] else None
+        if not date:
+            return jsonify({"items": [], "error": "该股无历史信号, 无法定位日期", "symbol": symbol})
         # 该股所属板块 + 所属板块当日成分信号
         try:
             my_boards = [r[0] for r in ccon.execute(
@@ -1248,8 +1256,8 @@ def api_board_ranks():
                 if strength == 'strong':
                     a[2] += 1
                 a[3] += 1
-        # 全市场排名(买入共振分: 买×2+强×1+卖×0.4)
-        ranked = sorted(agg.items(), key=lambda kv: -(kv[1][0] * 2 + kv[1][2] * 1.0 + kv[1][1] * 0.4))
+        # 全市场排名(买入共振分: 买×2+强×1-卖×0.3, 卖压罚分)
+        ranked = sorted(agg.items(), key=lambda kv: -(kv[1][0] * 2 + kv[1][2] * 1.0 - kv[1][1] * 0.3))
         total = len(ranked)
         rank_map = {c: i + 1 for i, (c, _) in enumerate(ranked)}
         # 该股在所属板块内是否贡献信号(当日该股是否有信号)
@@ -1266,7 +1274,7 @@ def api_board_ranks():
                 "rank": rank,
                 "total": total,
                 "buy": a[0], "sell": a[1], "strong": a[2],
-                "score": round(a[0] * 2 + a[2] * 1.0 + a[1] * 0.4, 1),
+                "score": round(a[0] * 2 + a[2] * 1.0 - a[1] * 0.3, 1),
                 "has_my_signal": bool(my_sig_types),
                 "my_types": my_sig_types,
             })
