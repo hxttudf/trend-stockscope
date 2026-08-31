@@ -972,7 +972,7 @@ def get_bc_dates():
 
 
 # ── 缠论板块共振 (热力矩阵 + 板块信号) ────────────────────────
-CONCEPT_DB = "/home/ubuntu/databases/概念映射.db"
+CONCEPT_DB = "/home/ubuntu/databases/concept_map.db"
 BOARD_BLACKLIST = {'昨日涨停', '昨日涨停_含一字', '昨日首板', '昨日连板', '东方财富热股',
                    '融资融券', '转融券标的', '机构重仓', '基金重仓', '深股通', '沪股通',
                    'MSCI中国', '标准普尔', '富时罗素', 'AH股', '破净股', '低价股', '高送转',
@@ -987,12 +987,15 @@ BUY_TYPES = {'一买', '二买', '三买'}
 
 @app.route("/api/board/matrix")
 def api_board_matrix():
-    """热力矩阵: 近N日 板块×日期 买/卖信号数. 参数 days=N(默认15)"""
+    """热力矩阵: 近N日 板块×日期 买/卖信号数. 参数 days=N(默认15)&dimension=concept|industry|region"""
     try:
         days = int(request.args.get("days", 15))
     except Exception:
         days = 15
     days = min(max(days, 5), 60)
+    dimension = request.args.get("dimension", "concept")
+    if dimension not in ("concept", "industry", "region"):
+        dimension = "concept"
     conn = db_conn(TREND_DB)
     ccon = db_conn(CONCEPT_DB)
     try:
@@ -1004,9 +1007,10 @@ def api_board_matrix():
         if not dates:
             return jsonify({"dates": [], "boards": [], "signals": []})
         ph = ",".join("?" * len(dates))
-        # 概念映射
+        # 概念映射(按维度)
         try:
-            mem = ccon.execute("SELECT code, concept FROM concept_members").fetchall()
+            mem = ccon.execute(
+                "SELECT code, concept FROM concept_members WHERE dimension=?", (dimension,)).fetchall()
         except Exception:
             mem = []
         cmap = {}
@@ -1051,7 +1055,7 @@ def api_board_matrix():
                 b, s, st, t = agg.get((concept, d), [0, 0, 0, 0])
                 row["cells"].append({"date": d, "buy": b, "sell": s, "strong": st, "total": t})
             rows.append(row)
-        return jsonify({"dates": dates, "boards": rows})
+        return jsonify({"dates": dates, "boards": rows, "dimension": dimension})
     finally:
         conn.close()
         ccon.close()
@@ -1059,9 +1063,10 @@ def api_board_matrix():
 
 @app.route("/api/board/signals")
 def api_board_signals():
-    """某日某板块的信号明细. 参数 date=YYYY-MM-DD&concept=板块名"""
+    """某日某板块的信号明细. 参数 date=YYYY-MM-DD&concept=板块名&dimension=concept|industry|region"""
     date = request.args.get("date", "")
     concept = request.args.get("concept", "")
+    dimension = request.args.get("dimension", "concept")
     if not date or not concept:
         return jsonify({"items": [], "error": "date/concept required"})
     conn = db_conn(TREND_DB)
@@ -1069,23 +1074,40 @@ def api_board_signals():
     try:
         try:
             members = [r[0] for r in ccon.execute(
-                "SELECT code FROM concept_members WHERE concept=?", (concept,)).fetchall()]
+                "SELECT code FROM concept_members WHERE concept=? AND dimension=?",
+                (concept, dimension)).fetchall()]
         except Exception:
             members = []
         if not members:
             return jsonify({"items": [], "error": "板块无成分"})
         ph = ",".join("?" * len(members))
-        # 该板块当日信号(含名称)
+        # 该板块当日信号(含名称/分数/强度) — 与缠论tab同字段
         items = conn.execute(
-            f"SELECT symbol, name, signal_type, strength, price, status "
+            f"SELECT symbol, name, signal_type, strength, strength_score, price, status "
             f"FROM chanlun_signals WHERE signal_date=? AND status='ok' "
             f"AND symbol IN ({ph}) AND category!='index' ORDER BY "
             f"CASE signal_type WHEN '一买' THEN 1 WHEN '二买' THEN 2 WHEN '三买' THEN 3 "
             f"WHEN '一卖' THEN 4 WHEN '二卖' THEN 5 WHEN '三卖' THEN 6 ELSE 7 END",
             [date] + members).fetchall()
-        out = [{"symbol": r[0], "name": r[1], "type": r[2], "strength": r[3],
-                "price": r[4], "status": r[5]} for r in items]
-        return jsonify({"items": out, "date": date, "concept": concept})
+        # 合并同股多信号: 同一 symbol 多条 → 单条, types 拼进 type 字段
+        merged = {}
+        for r in items:
+            sym = r[0]
+            if sym not in merged:
+                merged[sym] = {"symbol": r[0], "name": r[1], "type": r[2], "strength": r[3],
+                               "score": r[4], "price": r[5], "status": r[6], "types": [r[2]]}
+            else:
+                merged[sym]["types"].append(r[2])
+                # 类型排序: 按买卖类型顺序
+                order = {'一买': 1, '二买': 2, '三买': 3, '一卖': 4, '二卖': 5, '三卖': 6}
+                merged[sym]["types"].sort(key=lambda t: order.get(t, 9))
+                merged[sym]["type"] = "+".join(merged[sym]["types"])
+                # 强度取更强
+                prio = {'strong': 0, 'neutral': 1, 'weak': 2}
+                if prio.get(r[3], 1) < prio.get(merged[sym]["strength"], 1):
+                    merged[sym]["strength"] = r[3]
+        out = list(merged.values())
+        return jsonify({"items": out, "date": date, "concept": concept, "dimension": dimension})
     finally:
         conn.close()
         ccon.close()
