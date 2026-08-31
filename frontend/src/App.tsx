@@ -118,7 +118,7 @@ export default function App() {
   const [picks, setPicks] = useState<PickRecord[]>([])
   const [pickDates, setPickDates] = useState<{ date: string; total: number }[]>([])
   const [selectedPickDate, setSelectedPickDate] = useState('')
-  const [sidebarTab, setSidebarTab] = useState<'watchlist' | 'picks' | 'laogao' | 'chanlun' | 'chanlun_etf' | 'chanlun_index'>('watchlist')
+  const [sidebarTab, setSidebarTab] = useState<'watchlist' | 'picks' | 'laogao' | 'chanlun' | 'chanlun_etf' | 'chanlun_index' | 'chanlun_board'>('watchlist')
   const [strategyFilter, setStrategyFilter] = useState('')  // '' = all
   const [laogaoPicks, setLaogaoPicks] = useState<import('./utils/api').LaogaoPick[]>([])
   const [laogaoDates, setLaogaoDates] = useState<{ date: string; total: number; worth_cnt: number }[]>([])
@@ -128,6 +128,12 @@ export default function App() {
   const [selectedChanlunDate, setSelectedChanlunDate] = useState('')
   const [chanlunTypeFilter, setChanlunTypeFilter] = useState('')
   const [chanlunPreview, setChanlunPreview] = useState(false)  // 盘中预览模式
+  // ── 缠论板块共振 ──
+  const [boardMatrix, setBoardMatrix] = useState<{ dates: string[]; boards: { name: string; cells: { date: string; buy: number; sell: number; strong: number; total: number }[] }[] } | null>(null)
+  const [boardDays, setBoardDays] = useState(15)
+  const [boardSel, setBoardSel] = useState<{ date: string; concept: string } | null>(null)
+  const [boardSignals, setBoardSignals] = useState<any[]>([])
+  const [boardLoading, setBoardLoading] = useState(false)
   const [chanlunEtf, setChanlunEtf] = useState(false)  // 缠论tab: 只看ETF信号
   const [chanlunIndex, setChanlunIndex] = useState(false)  // 缠论tab: 只看指数信号
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null)
@@ -286,6 +292,37 @@ export default function App() {
     }
     return () => { cancelled = true }
   }, [selectedChanlunDate, chanlunTypeFilter, chanlunPreview, chanlunEtf, chanlunIndex])
+
+  // ── 缠论板块共振: 矩阵加载 ──
+  useEffect(() => {
+    let cancelled = false
+    if (sidebarTab === 'chanlun_board') {
+      setBoardLoading(true)
+      fetch(`/stockscope/api/board/matrix?days=${boardDays}`).then(r => r.json()).then(d => {
+        if (cancelled) return
+        setBoardMatrix(d)
+        setBoardLoading(false)
+        // 默认选中: 最近有信号的日期×最强板块
+        if (d?.dates?.length && d?.boards?.length) {
+          const lastD = d.dates[d.dates.length - 1]
+          const top = d.boards[0]
+          setBoardSel({ date: lastD, concept: top.name })
+        }
+      }).catch(() => { if (!cancelled) setBoardLoading(false) })
+    }
+    return () => { cancelled = true }
+  }, [sidebarTab, boardDays])
+
+  // ── 缠论板块共振: 选中格子→加载信号列表 ──
+  useEffect(() => {
+    let cancelled = false
+    if (sidebarTab === 'chanlun_board' && boardSel) {
+      setBoardSignals([])
+      fetch(`/stockscope/api/board/signals?date=${boardSel.date}&concept=${encodeURIComponent(boardSel.concept)}`)
+        .then(r => r.json()).then(d => { if (!cancelled) setBoardSignals(d.items ?? []) })
+    }
+    return () => { cancelled = true }
+  }, [sidebarTab, boardSel])
 
   // Load K-line for current stock
   const loadStock = useCallback(async (symbol: string, name: string, signalDate?: string) => {
@@ -727,8 +764,67 @@ export default function App() {
 
       {/* Main Layout */}
       <div className="main-layout">
-        {/* Chart */}
+        {/* Chart / 板块矩阵 */}
         <div className="chart-area">
+          {sidebarTab === 'chanlun_board' ? (
+            <div className="chart-container" style={{ overflow: 'auto', padding: 12, boxSizing: 'border-box' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
+                <span style={{ fontSize: 15, fontWeight: 600 }}>📊 缠论板块共振</span>
+                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>行=板块(按近3日买入共振分排序) 列=交易日 · 红=买 绿=卖 · 深浅=信号数 · 点击格子看明细</span>
+                <span style={{ marginLeft: 'auto', display: 'flex', gap: 4, alignItems: 'center', fontSize: 11 }}>
+                  天数
+                  {[10, 15, 30, 60].map(n => (
+                    <button key={n} className={`range-btn ${boardDays === n ? 'active' : ''}`}
+                      onClick={() => setBoardDays(n)} style={{ fontSize: 11, padding: '2px 6px' }}>{n}</button>
+                  ))}
+                </span>
+              </div>
+              {boardLoading && !boardMatrix ? (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '80%', color: 'var(--text-muted)' }}>加载中...</div>
+              ) : !boardMatrix?.boards?.length ? (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '80%', color: 'var(--text-muted)', flexDirection: 'column', gap: 8 }}>
+                  <div style={{ fontSize: 32 }}>🗂️</div>
+                  <div>暂无板块信号数据（需先跑 fetch_concepts.py 生成概念映射）</div>
+                </div>
+              ) : (
+                <div style={{ display: 'inline-block', minWidth: '100%' }}>
+                  {/* 表头: 日期 */}
+                  <div style={{ display: 'flex', position: 'sticky', top: 0, background: 'var(--bg, #0d1117)', zIndex: 2, borderBottom: '1px solid var(--border)', paddingBottom: 4 }}>
+                    <div style={{ width: 110, flexShrink: 0, fontSize: 11, color: 'var(--text-muted)' }}>板块</div>
+                    {boardMatrix.dates.map(d => (
+                      <div key={d} style={{ width: 56, flexShrink: 0, textAlign: 'center', fontSize: 10, color: 'var(--text-muted)' }}>{d.slice(5)}</div>
+                    ))}
+                  </div>
+                  {/* 行: 板块 */}
+                  {boardMatrix.boards.map(b => (
+                    <div key={b.name} style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid var(--border-subtle, rgba(240,246,252,0.06))' }}>
+                      <div style={{ width: 110, flexShrink: 0, fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 6 }} title={b.name}>{b.name}</div>
+                      {b.cells.map(c => {
+                        const n = c.buy + c.sell
+                        const isSel = boardSel?.date === c.date && boardSel?.concept === b.name
+                        let bg = 'transparent'
+                        if (c.buy > 0) bg = `rgba(248,81,73,${Math.min(0.25 + c.buy * 0.06, 0.85)})`
+                        else if (c.sell > 0) bg = `rgba(63,185,80,${Math.min(0.2 + c.sell * 0.05, 0.75)})`
+                        return (
+                          <div key={c.date}
+                            onClick={() => { if (n > 0) setBoardSel({ date: c.date, concept: b.name }) }}
+                            title={`${b.name} ${c.date}\n买${c.buy} 卖${c.sell}${c.strong ? ` 强${c.strong}` : ''}`}
+                            style={{
+                              width: 56, height: 30, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              fontSize: 11, cursor: n > 0 ? 'pointer' : 'default', background: bg, margin: 1, borderRadius: 3,
+                              color: n > 0 ? '#fff' : 'transparent', fontWeight: c.strong > 0 ? 700 : 400,
+                              outline: isSel ? '2px solid #a371f7' : 'none',
+                            }}>
+                            {n > 0 ? n : ''}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
           <div className="chart-container">
             <ChartErrorBoundary key={currentStock?.symbol || 'none'}>
             <Chart
@@ -765,6 +861,7 @@ export default function App() {
               </div>
             )}
           </div>
+          )}
           </div>
           {/* Right Sidebar — 自选股/每日选股 切换 */}
           <div className="watchlist-panel">
@@ -792,6 +889,10 @@ export default function App() {
           <button className={`wl-tab ${sidebarTab === 'chanlun' ? 'active' : ''}`}
             onClick={() => { setSidebarTab('chanlun'); setChanlunEtf(false); setChanlunIndex(false) }}>
               缠论
+            </button>
+          <button className={`wl-tab ${sidebarTab === 'chanlun_board' ? 'active' : ''}`}
+            onClick={() => setSidebarTab('chanlun_board')}>
+              📊 缠论板块
             </button>
           </div>
 
@@ -1000,6 +1101,46 @@ export default function App() {
                     )
                   })
                 })()
+              )}
+            </div>
+          ) : sidebarTab === 'chanlun_board' ? (
+            <div className="watchlist-items">
+              {/* 选中板块/日期标题 */}
+              <div style={{ padding: '8px 10px', fontSize: 12, borderBottom: '1px solid var(--border)', color: 'var(--text-muted)' }}>
+                {boardSel ? (
+                  <>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{boardSel.concept}</span>
+                    <span style={{ marginLeft: 6 }}>{boardSel.date}</span>
+                    <span style={{ marginLeft: 6, color: '#8b949e' }}>({boardSignals.length}条)</span>
+                  </>
+                ) : '点击矩阵格子查看信号'}
+              </div>
+              {boardSignals.length === 0 ? (
+                <div className="watchlist-empty">
+                  {boardSel ? `${boardSel.concept} ${boardSel.date} 无信号` : '在左侧矩阵点击有信号的格子'}
+                </div>
+              ) : (
+                boardSignals.map(s => (
+                  <div key={s.symbol + s.type}
+                    className={`watchlist-item ${currentStock?.symbol === s.symbol ? 'active' : ''}`}
+                    onClick={() => loadStock(s.symbol, s.name)}>
+                    <div style={{ flex: 1 }}>
+                      <span className="wl-sym">{s.symbol}</span>
+                      <span className="wl-name">{s.name}</span>
+                    </div>
+                    <div className="pc-tags" style={{ flexShrink: 0 }}>
+                      {s.strength === 'strong' && (
+                        <span className="pick-tag" style={{ color: '#3fb950', borderColor: '#3fb950' }}>🟢强</span>
+                      )}
+                      {s.strength === 'weak' && (
+                        <span className="pick-tag" style={{ color: '#f85149', borderColor: '#f85149' }}>🔴弱</span>
+                      )}
+                      <span className="pick-tag" style={{ color: s.type.includes('买') ? '#f0883e' : '#58a6ff' }}>
+                        {s.type}
+                      </span>
+                    </div>
+                  </div>
+                ))
               )}
             </div>
           ) : (

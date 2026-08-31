@@ -971,6 +971,126 @@ def get_bc_dates():
     return jsonify([dict(r) for r in rows])
 
 
+# ── 缠论板块共振 (热力矩阵 + 板块信号) ────────────────────────
+CONCEPT_DB = "/home/ubuntu/databases/概念映射.db"
+BOARD_BLACKLIST = {'昨日涨停', '昨日涨停_含一字', '昨日首板', '昨日连板', '东方财富热股',
+                   '融资融券', '转融券标的', '机构重仓', '基金重仓', '深股通', '沪股通',
+                   'MSCI中国', '标准普尔', '富时罗素', 'AH股', '破净股', '低价股', '高送转',
+                   '预盈预增', '预亏预减', '区块链', '次新股', '壳资源', 'ST股', '百元股',
+                   '微利股', '创业成份', '大盘价值', '价值股', '参股保险', '参股券商', '参股新三板',
+                   '中字头', '央企改革', '国企改革', '地方国资改革', '上证180', '上证50_', '沪深300_', '中证500',
+                   '上证380', '中盘股', '深成500', '红利股', '小盘股', '大盘股', '巨潮100',
+                   '上证A股', '深证A股', '创业板综', '科创50_', '融资标的', '深股通标的',
+                   'QFII重仓', '社保重仓', '信托重仓', '券商重仓', '保险重仓', '标普道琼斯A股',
+                   '央视50', '沪股通标的', '富时A股', '深证100', '沪深300成份', '上证50成份'}
+BUY_TYPES = {'一买', '二买', '三买'}
+
+@app.route("/api/board/matrix")
+def api_board_matrix():
+    """热力矩阵: 近N日 板块×日期 买/卖信号数. 参数 days=N(默认15)"""
+    try:
+        days = int(request.args.get("days", 15))
+    except Exception:
+        days = 15
+    days = min(max(days, 5), 60)
+    conn = db_conn(TREND_DB)
+    ccon = db_conn(CONCEPT_DB)
+    try:
+        # 最近N个有信号的交易日
+        dates = [r[0] for r in conn.execute(
+            "SELECT DISTINCT signal_date FROM chanlun_signals WHERE status='ok' "
+            "ORDER BY signal_date DESC LIMIT ?", (days,)).fetchall()]
+        dates = list(reversed(dates))  # 旧→新
+        if not dates:
+            return jsonify({"dates": [], "boards": [], "signals": []})
+        ph = ",".join("?" * len(dates))
+        # 概念映射
+        try:
+            mem = ccon.execute("SELECT code, concept FROM concept_members").fetchall()
+        except Exception:
+            mem = []
+        cmap = {}
+        for code, concept in mem:
+            cmap.setdefault(code.zfill(6), set()).add(concept)
+        # 聚合 (concept, date) -> [buy, sell, strong, total]
+        sigs2 = conn.execute(
+            f"SELECT symbol, signal_type, strength, signal_date FROM chanlun_signals "
+            f"WHERE signal_date IN ({ph}) AND status='ok' AND category!='index'",
+            dates).fetchall()
+        agg = {}
+        for sym, stype, strength, sdate in sigs2:
+            sym6 = sym.zfill(6)
+            for concept in cmap.get(sym6, []):
+                if concept in BOARD_BLACKLIST:
+                    continue
+                key = (concept, sdate)
+                a = agg.setdefault(key, [0, 0, 0, 0])  # buy, sell, strong, total
+                if stype in BUY_TYPES:
+                    a[0] += 1
+                else:
+                    a[1] += 1
+                if strength == 'strong':
+                    a[2] += 1
+                a[3] += 1
+        # 板块列表 + 共振分(近3日买信号数×2 + 总信号数, 降序)
+        board_stats = {}
+        for (concept, sdate), (b, s, st, t) in agg.items():
+            st0 = board_stats.setdefault(concept, [0, 0, 0])  # buy3d, total3d, maxbuy
+            if sdate >= dates[-3] if len(dates) >= 3 else True:
+                st0[0] += b
+                st0[1] += t
+            st0[2] = max(st0[2], b)
+        boards = sorted(board_stats.items(),
+                        key=lambda kv: (-kv[1][0], -kv[1][1], kv[0]))[:40]
+        # 矩阵数据: 每个板块每日期 (buy, sell, strong)
+        board_names = [c for c, _ in boards]
+        rows = []
+        for concept in board_names:
+            row = {"name": concept, "cells": []}
+            for d in dates:
+                b, s, st, t = agg.get((concept, d), [0, 0, 0, 0])
+                row["cells"].append({"date": d, "buy": b, "sell": s, "strong": st, "total": t})
+            rows.append(row)
+        return jsonify({"dates": dates, "boards": rows})
+    finally:
+        conn.close()
+        ccon.close()
+
+
+@app.route("/api/board/signals")
+def api_board_signals():
+    """某日某板块的信号明细. 参数 date=YYYY-MM-DD&concept=板块名"""
+    date = request.args.get("date", "")
+    concept = request.args.get("concept", "")
+    if not date or not concept:
+        return jsonify({"items": [], "error": "date/concept required"})
+    conn = db_conn(TREND_DB)
+    ccon = db_conn(CONCEPT_DB)
+    try:
+        try:
+            members = [r[0] for r in ccon.execute(
+                "SELECT code FROM concept_members WHERE concept=?", (concept,)).fetchall()]
+        except Exception:
+            members = []
+        if not members:
+            return jsonify({"items": [], "error": "板块无成分"})
+        ph = ",".join("?" * len(members))
+        # 该板块当日信号(含名称)
+        items = conn.execute(
+            f"SELECT symbol, name, signal_type, strength, price, status "
+            f"FROM chanlun_signals WHERE signal_date=? AND status='ok' "
+            f"AND symbol IN ({ph}) AND category!='index' ORDER BY "
+            f"CASE signal_type WHEN '一买' THEN 1 WHEN '二买' THEN 2 WHEN '三买' THEN 3 "
+            f"WHEN '一卖' THEN 4 WHEN '二卖' THEN 5 WHEN '三卖' THEN 6 ELSE 7 END",
+            [date] + members).fetchall()
+        out = [{"symbol": r[0], "name": r[1], "type": r[2], "strength": r[3],
+                "price": r[4], "status": r[5]} for r in items]
+        return jsonify({"items": out, "date": date, "concept": concept})
+    finally:
+        conn.close()
+        ccon.close()
+
+
 # ── Serve static frontend ────────────────────────────────────
 @app.route("/")
 def index():
