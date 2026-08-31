@@ -136,6 +136,8 @@ export default function App() {
   const [boardSel, setBoardSel] = useState<{ date: string; concept: string } | null>(null)
   const [boardSignals, setBoardSignals] = useState<any[]>([])
   const [boardLoading, setBoardLoading] = useState(false)
+  const [boardSplit, setBoardSplit] = useState(80)  // K线区高度百分比(默认4/5, 矩阵只露~4行), 可拖拽
+  const [boardDateSort, setBoardDateSort] = useState<{ date: string; dir: 'asc' | 'desc' } | null>(null)  // 按某日期信号数排序
   const [chanlunEtf, setChanlunEtf] = useState(false)  // 缠论tab: 只看ETF信号
   const [chanlunIndex, setChanlunIndex] = useState(false)  // 缠论tab: 只看指数信号
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null)
@@ -304,8 +306,8 @@ export default function App() {
         if (cancelled) return
         setBoardMatrix(d)
         setBoardLoading(false)
-        // 默认选中: 最近有信号的日期×最强板块
-        if (d?.dates?.length && d?.boards?.length) {
+        // 默认选中: 仅当尚未选择时(切换tab回来保留用户上次选择)
+        if (!boardSel && d?.dates?.length && d?.boards?.length) {
           const lastD = d.dates[d.dates.length - 1]
           const top = d.boards[0]
           setBoardSel({ date: lastD, concept: top.name })
@@ -770,7 +772,7 @@ export default function App() {
         <div className="chart-area">
           {sidebarTab === 'chanlun_board' ? (
             <div style={{ flex: 1, position: 'relative', minHeight: 0, display: 'flex', flexDirection: 'column', padding: 12, boxSizing: 'border-box', height: '100%' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10, flexShrink: 0, height: 'auto', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10, flexShrink: 0, height: 'auto', flexWrap: 'wrap', order: 2 }}>
                 <span style={{ fontSize: 15, fontWeight: 600 }}>缠论板块共振</span>
                 <span style={{ display: 'flex', gap: 4, alignItems: 'center', fontSize: 11 }}>
                   {[['concept', '概念'], ['industry', '行业'], ['region', '地域']].map(([v, l]) => (
@@ -794,7 +796,9 @@ export default function App() {
                   ))}
                 </span>
               </div>
-              <div style={{ flex: 1, overflow: 'auto', minHeight: 0, height: 'auto' }}>
+              <div style={currentStock && kline && sidebarTab === 'chanlun_board'
+                ? { flex: 1, minHeight: 150, flexShrink: 0, overflow: 'auto', order: 2 }
+                : { flex: 1, overflow: 'auto', minHeight: 0, height: 'auto', order: 2 }}>
                 {boardLoading && !boardMatrix ? (
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-muted)' }}>加载中...</div>
                 ) : !boardMatrix?.boards?.length ? (
@@ -804,15 +808,36 @@ export default function App() {
                   </div>
                 ) : (
                   <div style={{ display: 'inline-block', minWidth: '100%' }}>
-                    {/* 表头: 日期 (倒序: 最新在左) — 与格子同宽56+margin1=58 */}
+                    {/* 表头: 日期 (倒序: 最新在左) — 与格子同宽56+margin1=58; 点击日期按该日信号数排序 */}
                     <div style={{ display: 'flex', position: 'sticky', top: 0, background: 'var(--bg, #0d1117)', zIndex: 2, borderBottom: '1px solid var(--border)', paddingBottom: 4 }}>
                       <div style={{ width: 110, flexShrink: 0, fontSize: 11, color: 'var(--text-muted)', marginRight: 1 }}>板块</div>
-                      {[...boardMatrix.dates].reverse().map(d => (
-                        <div key={d} style={{ width: 56, flexShrink: 0, textAlign: 'center', fontSize: 10, color: 'var(--text-muted)', margin: '0 1px' }}>{d.slice(5)}</div>
-                      ))}
+                      {[...boardMatrix.dates].reverse().map(d => {
+                        const sortActive = boardDateSort?.date === d
+                        return (
+                          <div key={d}
+                            onClick={() => {
+                              if (!boardDateSort || boardDateSort.date !== d) setBoardDateSort({ date: d, dir: 'desc' })
+                              else if (boardDateSort.dir === 'desc') setBoardDateSort({ date: d, dir: 'asc' })
+                              else setBoardDateSort(null)
+                            }}
+                            title="点击按该日信号数排序(降序/升序/还原)"
+                            style={{ width: 56, flexShrink: 0, textAlign: 'center', fontSize: 10, margin: '0 1px',
+                              color: sortActive ? '#a371f7' : 'var(--text-muted)', cursor: 'pointer',
+                              fontWeight: sortActive ? 700 : 400 }}>
+                            {d.slice(5)}{sortActive ? (boardDateSort.dir === 'desc' ? '▼' : '▲') : ''}
+                          </div>
+                        )
+                      })}
                     </div>
-                    {/* 行: 板块 */}
-                    {boardMatrix.boards.map(b => (
+                    {/* 行: 板块 (按日期排序或默认近10日信号数) */}
+                    {(boardDateSort
+                      ? [...boardMatrix.boards].sort((a, b) => {
+                          const ta = a.cells.find(c => c.date === boardDateSort.date)?.total || 0
+                          const tb = b.cells.find(c => c.date === boardDateSort.date)?.total || 0
+                          return boardDateSort.dir === 'desc' ? tb - ta : ta - tb
+                        })
+                      : boardMatrix.boards
+                    ).map(b => (
                       <div key={b.name} style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid var(--border-subtle, rgba(240,246,252,0.06))' }}>
                         <div style={{ width: 110, flexShrink: 0, fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 6, marginRight: 1 }} title={b.name}>{b.name}</div>
                         {[...b.cells].reverse().map(c => {
@@ -854,9 +879,9 @@ export default function App() {
                   </div>
                 )}
               </div>
-              {/* 下方K线: 点击信号标的后显示(矩阵+K线同屏) */}
+              {/* K线在上(高度=boardSplit%), 矩阵在下(100-boardSplit%) — 中间拖拽条自由调整分割 */}
               {currentStock && kline && sidebarTab === 'chanlun_board' && (
-                <div style={{ height: '42%', minHeight: 200, flexShrink: 0, borderTop: '1px solid var(--border)', paddingTop: 6, position: 'relative' }}>
+                <div style={{ height: `${boardSplit}%`, minHeight: 150, flexShrink: 0, paddingTop: 6, position: 'relative', order: 1 }}>
                   <div style={{ position: 'absolute', top: 8, right: 10, zIndex: 5, display: 'flex', gap: 6, alignItems: 'center' }}>
                     <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{currentStock.name} {currentStock.symbol}</span>
                     <button className="range-btn" onClick={() => { setCurrentStock(null); setKline(null) }}
@@ -881,6 +906,34 @@ export default function App() {
                     showBoll={showBoll}
                     showMa={showMa}
                   />
+                </div>
+              )}
+              {/* 拖拽分割条: 调整K线/矩阵高度分配 */}
+              {currentStock && kline && sidebarTab === 'chanlun_board' && (
+                <div
+                  onMouseDown={(e) => {
+                    const startY = e.clientY
+                    const startSplit = boardSplit
+                    const areaH = (e.currentTarget.parentElement as HTMLElement).offsetHeight
+                    const onMove = (ev: MouseEvent) => {
+                      const pct = Math.min(80, Math.max(15, startSplit + (ev.clientY - startY) / areaH * 100))
+                      setBoardSplit(pct)
+                    }
+                    const onUp = () => {
+                      document.removeEventListener('mousemove', onMove)
+                      document.removeEventListener('mouseup', onUp)
+                      document.body.style.cursor = ''
+                      document.body.style.userSelect = ''
+                    }
+                    document.addEventListener('mousemove', onMove)
+                    document.addEventListener('mouseup', onUp)
+                    document.body.style.cursor = 'row-resize'
+                    document.body.style.userSelect = 'none'
+                  }}
+                  title="拖动调整K线/矩阵高度"
+                  style={{ height: 6, cursor: 'row-resize', background: 'transparent', flexShrink: 0, order: 1 }}
+                >
+                  <div style={{ height: 2, background: 'var(--border, #30363d)', borderRadius: 1, marginTop: 2 }} />
                 </div>
               )}
             </div>

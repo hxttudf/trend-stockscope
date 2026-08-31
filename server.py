@@ -983,7 +983,16 @@ BOARD_BLACKLIST = {'昨日涨停', '昨日涨停_含一字', '昨日首板', '�
                    '上证380', '中盘股', '深成500', '红利股', '小盘股', '大盘股', '巨潮100',
                    '上证A股', '深证A股', '创业板综', '科创50_', '融资标的', '深股通标的',
                    'QFII重仓', '社保重仓', '信托重仓', '券商重仓', '保险重仓', '标普道琼斯A股',
-                   '央视50', '沪股通标的', '富时A股', '深证100', '沪深300成份', '上证50成份'}
+                   '央视50', '沪股通标的', '富时A股', '深证100', '沪深300成份', '上证50成份',
+                   '小盘价值', '低市净率', '参股银行', '参股保险', '参股券商', '股权激励', '最近多板',
+                   '先进制造风格', '高质押', '高商誉', '高贝塔', '高负债率', '低价转债',
+                   '破发破净', '昨日上榜', '昨日触板', '昨日跌停', '昨日强势', '昨日弱势',
+                   '融资融券标的', '转融券出借', '举牌', '高送转预期', '员工持股', '增持回购',
+                   '减持预披露', '解禁', '定增破发', '可转债', '债转股', '要约收购', '重组概念',
+                   '长期破净', '医药医疗风格', '中特估', '茅指数', '宁组合', '核心资产',
+                   '高股息精选', '低波精选', '成长精选', '价值精选', '大盘成长', '中盘成长',
+                   '小盘成长', '大盘平衡', '中盘平衡', '小盘平衡', '中盘价值', '微盘股',
+                   '百元强势股', '低价强势股', '强势股账户'}
 BUY_TYPES = {'一买', '二买', '三买'}
 
 @app.route("/api/board/matrix")
@@ -1002,9 +1011,9 @@ def api_board_matrix():
     preview = request.args.get("preview", "0") == "1"
     conn = db_conn(TREND_DB)
     try:
-        # 版本key = 最新日期(正式signal_date 或 盘中batch_date)
+        # 版本key = 最新日期(正式signal_date 或 盘中最新批次signal_date)
         if preview:
-            ver = conn.execute("SELECT MAX(batch_date) FROM preview_signals").fetchone()[0] or ""
+            ver = conn.execute("SELECT MAX(signal_date) FROM preview_signals").fetchone()[0] or ""
         else:
             ver = conn.execute("SELECT MAX(signal_date) FROM chanlun_signals WHERE status='ok'").fetchone()[0] or ""
     finally:
@@ -1023,11 +1032,11 @@ def api_board_matrix():
     conn = db_conn(TREND_DB)
     ccon = db_conn(CONCEPT_DB)
     try:
-        # 最近N个日期(盘中=batch_date / 正式=signal_date), 只取非指数
+        # 最近N个日期 — 日期轴统一用signal_date(正式用chanlun、盘中用preview的signal_date), 保证盘中不带未来批次日期
         if preview:
             dates = [r[0] for r in conn.execute(
-                "SELECT DISTINCT batch_date FROM preview_signals WHERE category!='index' "
-                "ORDER BY batch_date DESC LIMIT ?", (days,)).fetchall()]
+                "SELECT DISTINCT signal_date FROM preview_signals WHERE category!='index' "
+                "ORDER BY signal_date DESC LIMIT ?", (days,)).fetchall()]
         else:
             dates = [r[0] for r in conn.execute(
                 "SELECT DISTINCT signal_date FROM chanlun_signals WHERE status='ok' AND category!='index' "
@@ -1047,10 +1056,14 @@ def api_board_matrix():
             cmap.setdefault(code.zfill(6), set()).add(concept)
         # 聚合 (concept, date) -> [buy, sell, strong, total]
         if preview:
+            # 盘中: 取最新批次(batch_date最大+batch_seq最大)的信号, 按signal_date聚合(与正式同轴)
+            pv_max = conn.execute("SELECT MAX(batch_date) FROM preview_signals").fetchone()[0]
+            pv_seq = conn.execute(
+                "SELECT MAX(batch_seq) FROM preview_signals WHERE batch_date=?", (pv_max,)).fetchone()[0]
             sigs2 = conn.execute(
-                f"SELECT symbol, signal_type, strength, batch_date FROM preview_signals "
-                f"WHERE batch_date IN ({ph}) AND category!='index'",
-                dates).fetchall()
+                f"SELECT symbol, signal_type, strength, signal_date FROM preview_signals "
+                f"WHERE batch_date=? AND batch_seq=? AND signal_date IN ({ph}) AND category!='index'",
+                [pv_max, pv_seq] + dates).fetchall()
         else:
             sigs2 = conn.execute(
                 f"SELECT symbol, signal_type, strength, signal_date FROM chanlun_signals "
@@ -1071,14 +1084,15 @@ def api_board_matrix():
                 if strength == 'strong':
                     a[2] += 1
                 a[3] += 1
-        # 板块列表 + 共振分(近3日买信号数×2 + 总信号数, 降序) — 全量不截断
+        # 板块排序: 最近3个交易日总信号数降序(次级=买信号数, 再按名称)
+        near_dates = set(dates[-3:] if len(dates) >= 3 else dates)
         board_stats = {}
         for (concept, sdate), (b, s, st, t) in agg.items():
-            st0 = board_stats.setdefault(concept, [0, 0, 0])  # buy3d, total3d, maxbuy
-            if sdate >= dates[-3] if len(dates) >= 3 else True:
-                st0[0] += b
-                st0[1] += t
-            st0[2] = max(st0[2], b)
+            if sdate not in near_dates:
+                continue
+            st0 = board_stats.setdefault(concept, [0, 0])  # total10d, buy10d
+            st0[0] += t
+            st0[1] += b
         boards = sorted(board_stats.items(),
                         key=lambda kv: (-kv[1][0], -kv[1][1], kv[0]))
         # 矩阵数据: 每个板块每日期 (buy, sell, strong)
@@ -1130,15 +1144,18 @@ def api_board_signals():
         if not members:
             return jsonify({"items": [], "error": "板块无成分"})
         ph = ",".join("?" * len(members))
-        # 该板块当日信号(含名称/分数/强度) — 与缠论tab同字段; preview=盘中表
+        # 该板块当日信号(含名称/分数/强度) — 与缠论tab同字段; preview=盘中最新批次按signal_date查
         if preview:
+            pv_max = conn.execute("SELECT MAX(batch_date) FROM preview_signals").fetchone()[0]
+            pv_seq = conn.execute(
+                "SELECT MAX(batch_seq) FROM preview_signals WHERE batch_date=?", (pv_max,)).fetchone()[0]
             items = conn.execute(
                 f"SELECT symbol, name, signal_type, strength, strength_score, price, status "
-                f"FROM preview_signals WHERE batch_date=? AND status='preview' "
+                f"FROM preview_signals WHERE batch_date=? AND batch_seq=? AND signal_date=? AND status='preview' "
                 f"AND symbol IN ({ph}) AND category!='index' ORDER BY "
                 f"CASE signal_type WHEN '一买' THEN 1 WHEN '二买' THEN 2 WHEN '三买' THEN 3 "
                 f"WHEN '一卖' THEN 4 WHEN '二卖' THEN 5 WHEN '三卖' THEN 6 ELSE 7 END",
-                [date] + members).fetchall()
+                [pv_max, pv_seq, date] + members).fetchall()
         else:
             items = conn.execute(
                 f"SELECT symbol, name, signal_type, strength, strength_score, price, status "
