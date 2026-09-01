@@ -536,8 +536,13 @@ def api_chanlun_dates():
             # 类别过滤: 指数/ETF/股票各看各的盘中批次
             PVC = "category='" + ("index" if cat == "index" else ("etf" if etf else "stock")) + "'"
             CAT = PVC  # 正式表(两表同构category列)同口径
+            # 盘中批次按signal_date(信号时间)展示, 不挂batch_date(批次号≠信号日, 会造出09-01假列) — 与矩阵口径统一
+            pv_max, pv_seq = conn.execute(
+                "SELECT batch_date, MAX(batch_seq) FROM preview_signals "
+                "WHERE batch_date=(SELECT MAX(batch_date) FROM preview_signals)").fetchone()
             pv_dates = [r[0] for r in conn.execute(
-                f"SELECT DISTINCT batch_date FROM preview_signals WHERE (batch_date, batch_seq) IN (SELECT batch_date, batch_seq FROM preview_signals ORDER BY batch_date DESC, batch_seq DESC LIMIT 1) AND status='preview' AND {PVC}").fetchall()]
+                f"SELECT DISTINCT signal_date FROM preview_signals WHERE batch_date=? AND batch_seq=? AND status='preview' AND {PVC}",
+                (pv_max, pv_seq)).fetchall()]
             if typ in ("二三买", "二三卖"):
                 # 重合类: 正式表已确认重合 + preview表未确认重合 合并(修复: 原逻辑只查正式表, 预览日期丢失)
                 bt = "二买" if typ == "二三买" else "二卖"
@@ -580,15 +585,15 @@ def api_chanlun_dates():
                 rows = conn.execute(
                     f"SELECT signal_date, COUNT(*) FROM chanlun_signals WHERE status='ok' AND {CAT} "
                     "GROUP BY signal_date ORDER BY signal_date DESC LIMIT 60").fetchall()
-            # 盘中批次统一挂批次日(batch_date=今天)展示; 正式表各日期计数原样保留(不再被preview同日期覆盖)
+            # 盘中预览: 按signal_date(信号时间)并入日期列表, 同日覆盖正式计数(preview更新); 假批次日列不再出现
             if pv_dates:
                 out = list(rows)
                 pv_map = {}
                 for r in conn.execute(
-                        f"SELECT batch_date, signal_type, COUNT(*) FROM preview_signals WHERE (batch_date, batch_seq) IN (SELECT batch_date, batch_seq FROM preview_signals ORDER BY batch_date DESC, batch_seq DESC LIMIT 1) AND status='preview' AND {PVC} "
-                        "GROUP BY batch_date, signal_type").fetchall():
+                        f"SELECT signal_date, signal_type, COUNT(*) FROM preview_signals WHERE batch_date=? AND batch_seq=? AND status='preview' AND {PVC} "
+                        "GROUP BY signal_date, signal_type", (pv_max, pv_seq)).fetchall():
                     pv_map.setdefault(r[0], {})[r[1]] = r[2]
-                # 盘中批次日期(今天): 追加进日期列表
+                # 盘中信号日: 追加/覆盖进日期列表
                 have = {r[0] for r in out}
                 for d in pv_dates:
                     cnt = sum(c for t, c in pv_map.get(d, {}).items() if not typ or t == typ)
@@ -722,23 +727,28 @@ def api_chanlun_signals():
             # 类别过滤: category=index→指数 / etf=1→ETF / 默认→股票(preview表category列: stock/etf/index)
             _cat = "index" if request.args.get("category") == "index" else ("etf" if request.args.get("etf") == "1" else "stock")
             PVC = f"category='{_cat}'"
+            # 盘中批次按signal_date(信号时间)口径 — 与dates接口统一
+            pv_max, pv_seq = conn.execute(
+                "SELECT batch_date, MAX(batch_seq) FROM preview_signals "
+                "WHERE batch_date=(SELECT MAX(batch_date) FROM preview_signals)").fetchone()
             pv_dates = [r[0] for r in conn.execute(
-                f"SELECT DISTINCT batch_date FROM preview_signals WHERE (batch_date, batch_seq) IN (SELECT batch_date, batch_seq FROM preview_signals ORDER BY batch_date DESC, batch_seq DESC LIMIT 1) AND status='preview' AND {PVC}").fetchall()]
+                f"SELECT DISTINCT signal_date FROM preview_signals WHERE batch_date=? AND batch_seq=? AND status='preview' AND {PVC}",
+                (pv_max, pv_seq)).fetchall()]
             if date in pv_dates:
                 if typ.lower() == "d3":
                     rows = conn.execute(
                         "SELECT symbol, name, signal_type, signal_date, price, ref_zd, ref_zg, status, strength, strength_score, category FROM preview_signals "
-                        "WHERE batch_date=? AND d3=1 AND {PVC} ORDER BY symbol", (date,)).fetchall()
+                        "WHERE signal_date=? AND d3=1 AND {PVC} ORDER BY symbol", (date,)).fetchall()
                 elif typ.lower() == "w30":
                     rows = conn.execute(
                         "SELECT symbol, name, signal_type, signal_date, price, ref_zd, ref_zg, status, strength, strength_score, category FROM preview_signals "
-                        "WHERE batch_date=? AND w30=1 AND {PVC} ORDER BY symbol", (date,)).fetchall()
+                        "WHERE signal_date=? AND w30=1 AND {PVC} ORDER BY symbol", (date,)).fetchall()
                 elif typ == "二三买":
                     rows = conn.execute(
                         "SELECT a.symbol, a.name, a.signal_type, a.signal_date, a.price, a.ref_zd, a.ref_zg, a.status, a.strength, a.strength_score, a.category "
                         "FROM preview_signals a JOIN preview_signals b "
                         "ON a.symbol=b.symbol AND a.batch_date=b.batch_date AND a.category=b.category "
-                        "WHERE (a.batch_date, a.batch_seq) IN (SELECT batch_date, batch_seq FROM preview_signals ORDER BY batch_date DESC, batch_seq DESC LIMIT 1) AND a.batch_date=? AND {PVC} AND ((a.signal_type='二买' AND b.signal_type='三买') "
+                        "WHERE (a.batch_date, a.batch_seq) IN (SELECT batch_date, batch_seq FROM preview_signals ORDER BY batch_date DESC, batch_seq DESC LIMIT 1) AND a.signal_date=? AND {PVC} AND ((a.signal_type='二买' AND b.signal_type='三买') "
                         "OR (a.signal_type='三买' AND b.signal_type='二买')) "
                         "ORDER BY a.symbol, a.signal_type", (date,)).fetchall()
                 elif typ == "二三卖":
@@ -746,11 +756,11 @@ def api_chanlun_signals():
                         "SELECT a.symbol, a.name, a.signal_type, a.signal_date, a.price, a.ref_zd, a.ref_zg, a.status, a.strength, a.strength_score, a.category "
                         "FROM preview_signals a JOIN preview_signals b "
                         "ON a.symbol=b.symbol AND a.batch_date=b.batch_date AND a.category=b.category "
-                        "WHERE (a.batch_date, a.batch_seq) IN (SELECT batch_date, batch_seq FROM preview_signals ORDER BY batch_date DESC, batch_seq DESC LIMIT 1) AND a.batch_date=? AND {PVC} AND ((a.signal_type='二卖' AND b.signal_type='三卖') "
+                        "WHERE (a.batch_date, a.batch_seq) IN (SELECT batch_date, batch_seq FROM preview_signals ORDER BY batch_date DESC, batch_seq DESC LIMIT 1) AND a.signal_date=? AND {PVC} AND ((a.signal_type='二卖' AND b.signal_type='三卖') "
                         "OR (a.signal_type='三卖' AND b.signal_type='二卖')) "
                         "ORDER BY a.symbol, a.signal_type", (date,)).fetchall()
                 else:
-                    q = f"SELECT symbol, name, signal_type, signal_date, price, ref_zd, ref_zg, status, strength, strength_score, category FROM preview_signals WHERE batch_date=? AND {PVC}"
+                    q = f"SELECT symbol, name, signal_type, signal_date, price, ref_zd, ref_zg, status, strength, strength_score, category FROM preview_signals WHERE signal_date=? AND {PVC}"
                     args = [date]
                     if typ:
                         q += " AND signal_type=?"
