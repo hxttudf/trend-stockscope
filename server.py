@@ -1232,8 +1232,8 @@ def api_board_signals():
 
 @app.route("/api/board/ranks")
 def api_board_ranks():
-    """单只股票所属板块在指定信号日的共振排名. 参数 symbol=代码&date=YYYY-MM-DD(可选,缺省=该股最近信号日)&dimension=concept
-    返回每个所属板块: 当日买/卖/强信号数、买入共振分、全市场排名(同矩阵排序口径: 当日买×2+强×1-卖×0.3)"""
+    """单只股票所属板块在指定信号日的共振排名. 参数 symbol=代码&date=YYYY-MM-DD(可选,缺省=全市场最新信号日)&dimension=concept|industry|all
+    返回每个所属板块: 当日买/卖/强信号数、买入共振分、全市场排名(同矩阵排序口径: 当日买×2+强×1-卖×0.3); all=概念+行业两组"""
     symbol = request.args.get("symbol", "").zfill(6)
     date = request.args.get("date", "")
     dimension = request.args.get("dimension", "concept")
@@ -1249,66 +1249,68 @@ def api_board_ranks():
             date = r[0] if r and r[0] else None
         if not date:
             return jsonify({"items": [], "error": "无信号数据", "symbol": symbol})
-        # 该股所属板块 + 所属板块当日成分信号
-        try:
-            my_boards = [r[0] for r in ccon.execute(
-                "SELECT concept FROM concept_members WHERE code=? AND dimension=?",
-                (symbol, dimension)).fetchall()]
-        except Exception:
-            my_boards = []
-        if not my_boards:
-            return jsonify({"items": [], "error": "该股无板块归属", "symbol": symbol})
-        # 黑名单过滤
-        my_boards = [b for b in my_boards if b not in BOARD_BLACKLIST]
-        # 该日全市场信号 → 各板块聚合(同矩阵口径)
+        # 全市场当日信号(一次查出, 各维度共用)
         sigs = conn.execute(
             "SELECT symbol, signal_type, strength FROM chanlun_signals "
             "WHERE signal_date=? AND status='ok' AND category!='index'", (date,)).fetchall()
-        agg = {}
-        try:
-            mem = ccon.execute(
-                "SELECT code, concept FROM concept_members WHERE dimension=?", (dimension,)).fetchall()
-        except Exception:
-            mem = []
-        cmap = {}
-        for code, concept in mem:
-            cmap.setdefault(code.zfill(6), set()).add(concept)
-        for s, stp, strength in sigs:
-            for concept in cmap.get(s.zfill(6), ()):
-                if concept in BOARD_BLACKLIST:
-                    continue
-                a = agg.setdefault(concept, [0, 0, 0, 0])
-                if stp in ('一买', '二买', '三买'):
-                    a[0] += 1
-                else:
-                    a[1] += 1
-                if strength == 'strong':
-                    a[2] += 1
-                a[3] += 1
-        # 全市场排名(买入共振分: 买×2+强×1-卖×0.3, 卖压罚分)
-        ranked = sorted(agg.items(), key=lambda kv: -(kv[1][0] * 2 + kv[1][2] * 1.0 - kv[1][1] * 0.3))
-        total = len(ranked)
-        rank_map = {c: i + 1 for i, (c, _) in enumerate(ranked)}
-        # 该股在所属板块内是否贡献信号(当日该股是否有信号)
+        # 该股当日自身信号(一次查出, 各维度共用)
         my_sig_types = [r[0] for r in conn.execute(
             "SELECT signal_type FROM chanlun_signals WHERE symbol=? AND signal_date=? AND status='ok'", (symbol, date)).fetchall()]
-        items = []
-        for b in my_boards:
-            a = agg.get(b, [0, 0, 0, 0])
-            rank = rank_map.get(b)
-            if rank is None:
-                continue  # 板块当日无信号, 不展示
-            items.append({
-                "concept": b,
-                "rank": rank,
-                "total": total,
-                "buy": a[0], "sell": a[1], "strong": a[2],
-                "score": round(a[0] * 2 + a[2] * 1.0 - a[1] * 0.3, 1),
-                "has_my_signal": bool(my_sig_types),
-                "my_types": my_sig_types,
-            })
-        items.sort(key=lambda x: x["rank"])
-        return jsonify({"items": items, "symbol": symbol, "date": date, "dimension": dimension})
+        dims = ["concept", "industry"] if dimension == "all" else [dimension]
+        groups = []
+        for dim in dims:
+            try:
+                my_boards = [r[0] for r in ccon.execute(
+                    "SELECT concept FROM concept_members WHERE code=? AND dimension=?",
+                    (symbol, dim)).fetchall()]
+                mem = ccon.execute(
+                    "SELECT code, concept FROM concept_members WHERE dimension=?", (dim,)).fetchall()
+            except Exception:
+                my_boards, mem = [], []
+            my_boards = [b for b in my_boards if b not in BOARD_BLACKLIST]
+            if not my_boards:
+                continue
+            cmap = {}
+            for code, concept in mem:
+                cmap.setdefault(code.zfill(6), set()).add(concept)
+            agg = {}
+            for s, stp, strength in sigs:
+                for concept in cmap.get(s.zfill(6), ()):
+                    if concept in BOARD_BLACKLIST:
+                        continue
+                    a = agg.setdefault(concept, [0, 0, 0, 0])
+                    if stp in ('一买', '二买', '三买'):
+                        a[0] += 1
+                    else:
+                        a[1] += 1
+                    if strength == 'strong':
+                        a[2] += 1
+                    a[3] += 1
+            # 全市场排名(买入共振分: 买×2+强×1-卖×0.3, 卖压罚分)
+            ranked = sorted(agg.items(), key=lambda kv: -(kv[1][0] * 2 + kv[1][2] * 1.0 - kv[1][1] * 0.3))
+            total = len(ranked)
+            rank_map = {c: i + 1 for i, (c, _) in enumerate(ranked)}
+            items = []
+            for b in my_boards:
+                a = agg.get(b, [0, 0, 0, 0])
+                rank = rank_map.get(b)
+                if rank is None:
+                    continue  # 板块当日无信号, 不展示
+                items.append({
+                    "concept": b,
+                    "rank": rank,
+                    "total": total,
+                    "buy": a[0], "sell": a[1], "strong": a[2],
+                    "score": round(a[0] * 2 + a[2] * 1.0 - a[1] * 0.3, 1),
+                    "has_my_signal": bool(my_sig_types),
+                    "my_types": my_sig_types,
+                })
+            items.sort(key=lambda x: x["rank"])
+            groups.append({"dimension": dim, "items": items})
+        n_all = sum(len(g["items"]) for g in groups)
+        first_items = groups[0]["items"] if groups else []
+        return jsonify({"items": first_items, "groups": groups, "symbol": symbol, "date": date,
+                        "dimension": dimension, "total": n_all})
     finally:
         conn.close()
         ccon.close()

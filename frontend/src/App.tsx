@@ -94,6 +94,50 @@ class ChartErrorBoundary extends Component<{ children: ReactNode }, { error: str
   }
 }
 
+// ── 板块共振排名悬浮面板(概念/行业分组) ──
+const DIM_LABEL: Record<string, string> = { concept: '概念板块', industry: '行业板块' }
+function BoardRanksPanel(props: {
+  name: string; groups: any[] | null; items: any[]; total: number; date: string
+  onClose: () => void
+}) {
+  const { name, groups, items, total, date, onClose } = props
+  // 无groups时按单一概念组渲染(兼容旧数据)
+  const showGroups = groups && groups.length > 0 ? groups : (items?.length ? [{ dimension: 'concept', items }] : [])
+  const rowsOf = (it: any) => (
+    <div key={it.dimension + ':' + it.concept} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 0', borderBottom: '1px solid var(--border-subtle, rgba(240,246,252,0.06))' }}>
+      <span style={{ width: 42, flexShrink: 0, fontWeight: 600, color: it.rank <= 50 ? '#f0883e' : 'var(--text-muted)' }}>#{it.rank}</span>
+      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.concept}</span>
+      <span style={{ color: '#f0883e', fontWeight: 600 }}>{it.buy}买</span>
+      <span style={{ color: '#58a6ff' }}>{it.sell}卖</span>
+      {it.strong > 0 && <span style={{ color: '#3fb950' }}>{it.strong}强</span>}
+      <span style={{ color: 'var(--text-muted)' }}>分{it.score}</span>
+    </div>
+  )
+  return (
+    <div style={{
+      position: 'absolute', top: 36, right: 10, zIndex: 15, width: 330, height: 'auto',
+      background: 'var(--bg, #0d1117)', border: '1px solid var(--border, #30363d)', borderRadius: 8,
+      boxShadow: '0 8px 24px rgba(0,0,0,0.5)', padding: '10px 12px', fontSize: 11,
+      maxHeight: '70%', overflow: 'auto' }}>
+      <div style={{ fontWeight: 600, marginBottom: 6, color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span>{name} 所属板块共振排名 <span style={{ fontWeight: 400 }}>({date} 买入共振分)</span></span>
+        <span className="range-btn" style={{ fontSize: 10, padding: '0 6px', cursor: 'pointer' }} onClick={onClose}>✕</span>
+      </div>
+      {showGroups.map((g: any) => (
+        <div key={g.dimension}>
+          <div style={{ fontWeight: 600, margin: '6px 0 2px', color: g.dimension === 'industry' ? '#58a6ff' : '#f0883e' }}>
+            {DIM_LABEL[g.dimension] || g.dimension} <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>{g.items.length}个 · 当日全市场{g.items[0]?.total ?? '-'}板块参与排名</span>
+          </div>
+          {g.items.map(rowsOf)}
+        </div>
+      ))}
+      <div style={{ marginTop: 8, fontSize: 10, color: 'var(--text-muted)' }}>
+        排名口径: 买×2+强×1−卖×0.3 · #1 为买点最密集板块 · 概念/行业各自独立排名
+      </div>
+    </div>
+  )
+}
+
 export default function App() {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<StockInfo[]>([])
@@ -140,6 +184,8 @@ export default function App() {
   const [boardSplit, setBoardSplit] = useState(80)  // K线区高度百分比(默认4/5, 矩阵只露~4行), 可拖拽
   const [boardDateSort, setBoardDateSort] = useState<{ date: string; dir: 'asc' | 'desc' } | null>(null)  // 按某日期信号数排序
   const [boardRanks, setBoardRanks] = useState<any[] | null>(null)  // 当前标的的板块共振排名(null=未加载/无)
+  const [boardRanksGroups, setBoardRanksGroups] = useState<any[] | null>(null)  // 概念+行业分组[{dimension, items}]
+  const [boardRanksTotal, setBoardRanksTotal] = useState(0)  // 两维度合计板块数
   const [boardRanksDate, setBoardRanksDate] = useState('')  // 共振排名对应的信号日
   const [showBoardRanks, setShowBoardRanks] = useState(false)  // 悬浮面板显隐
   const [chanlunEtf, setChanlunEtf] = useState(false)  // 缠论tab: 只看ETF信号
@@ -345,14 +391,16 @@ export default function App() {
     setSignals(data.signals)
     // 有指定信号日期则跳转到该日期，否则定位最新K线(不跳选股信号日期—选股信号可能很旧)
     setFocusDate(signalDate || null)
-    // 拉取该股所属板块共振排名(所有tab通用; date缺省=全市场最新信号日)
-    fetch(`/stockscope/api/board/ranks?symbol=${symbol}`)
+    // 拉取该股所属板块共振排名(所有tab通用; date缺省=全市场最新信号日; 概念+行业两组)
+    fetch(`/stockscope/api/board/ranks?symbol=${symbol}&dimension=all`)
       .then(r => r.json()).then(r => {
         if (seq !== loadSeq.current) return
         setBoardRanks(r.items || null)
+        setBoardRanksGroups(r.groups || null)
+        setBoardRanksTotal(r.total || 0)
         setBoardRanksDate(r.date || '')
         setShowBoardRanks(false)
-      }).catch(() => { if (seq === loadSeq.current) setBoardRanks(null) })
+      }).catch(() => { if (seq === loadSeq.current) { setBoardRanks(null); setBoardRanksGroups(null); setBoardRanksTotal(0) } })
   }, [qfq, selectedPickDate])
 
   // Reload kline when qfq changes and a stock is selected
@@ -903,44 +951,23 @@ export default function App() {
                 <div style={{ height: `${boardSplit}%`, minHeight: 150, flexShrink: 0, paddingTop: 6, position: 'relative', order: 1 }}>
                   <div style={{ position: 'absolute', top: 8, right: 10, zIndex: 5, display: 'flex', gap: 6, alignItems: 'center' }}>
                     <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{currentStock.name} {currentStock.symbol}</span>
-                    {boardRanks && boardRanks.length > 0 && (
+                    {boardRanksTotal > 0 && (
                       <span
                         className="range-btn"
                         onClick={() => setShowBoardRanks(!showBoardRanks)}
                         title="所属板块当日共振排名(买入共振分)"
-                        style={{ fontSize: 11, padding: '1px 8px', cursor: 'pointer', color: boardRanks[0].rank <= 50 ? '#f0883e' : 'var(--text-muted)', borderColor: boardRanks[0].rank <= 50 ? '#f0883e' : undefined }}>
-                        板块共振 {boardRanks.length}
-                      </span>
-                    )}
+                        style={{ fontSize: 11, padding: '1px 8px', cursor: 'pointer', color: (boardRanks?.[0]?.rank ?? 999) <= 50 ? '#f0883e' : 'var(--text-muted)', borderColor: (boardRanks?.[0]?.rank ?? 999) <= 50 ? '#f0883e' : undefined }}>
+                        板块共振 {Math.max(boardRanksTotal, boardRanks?.length ?? 0)}
+                        </span>
+                      )}
                     <button className="range-btn" onClick={() => { setCurrentStock(null); setKline(null); setBoardRanks(null); setShowBoardRanks(false) }}
                       style={{ fontSize: 11, padding: '1px 8px', cursor: 'pointer' }}>关闭K线</button>
                   </div>
-                  {/* 板块共振排名悬浮面板 */}
-                  {showBoardRanks && boardRanks && boardRanks.length > 0 && (
-                    <div style={{
-                      position: 'absolute', top: 36, right: 10, zIndex: 10, width: 320,
-                      background: 'var(--bg, #0d1117)', border: '1px solid var(--border, #30363d)', borderRadius: 8,
-                      boxShadow: '0 8px 24px rgba(0,0,0,0.5)', padding: '10px 12px', fontSize: 11,
-                      maxHeight: '70%', overflow: 'auto' }}>
-                      <div style={{ fontWeight: 600, marginBottom: 8, color: 'var(--text-muted)' }}>
-                        {currentStock.name} 所属板块共振排名 <span style={{ fontWeight: 400 }}>({boardSel?.date || boardMatrix?.dates?.[boardMatrix.dates.length - 1]} 买入共振分)</span>
-                      </div>
-                      {boardRanks.map(b => (
-                        <div key={b.concept} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 0', borderBottom: '1px solid var(--border-subtle, rgba(240,246,252,0.06))' }}>
-                          <span style={{ width: 42, flexShrink: 0, fontWeight: 600, color: b.rank <= 50 ? '#f0883e' : 'var(--text-muted)' }}>
-                            {b.rank <= 50 ? `#${b.rank}` : `#${b.rank}`}
-                          </span>
-                          <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.concept}</span>
-                          <span style={{ color: '#f0883e', fontWeight: 600 }}>{b.buy}买</span>
-                          <span style={{ color: '#58a6ff' }}>{b.sell}卖</span>
-                          {b.strong > 0 && <span style={{ color: '#3fb950' }}>{b.strong}强</span>}
-                          <span style={{ color: 'var(--text-muted)' }}>分{b.score}</span>
-                        </div>
-                      ))}
-                      <div style={{ marginTop: 8, fontSize: 10, color: 'var(--text-muted)' }}>
-                        全市场当日有信号板块 {boardRanks[0]?.total || '-'} 个 · #1 为买点最密集板块
-                      </div>
-                    </div>
+                  {/* 板块共振排名悬浮面板(概念+行业) */}
+                  {showBoardRanks && boardRanksTotal > 0 && (
+                    <BoardRanksPanel name={currentStock.name} groups={boardRanksGroups} items={boardRanks ?? []}
+                      total={boardRanksTotal} date={boardSel?.date || boardRanksDate || ''}
+                      onClose={() => setShowBoardRanks(false)} />
                   )}
                   <Chart
                     kline={kline?.kline ?? []}
@@ -1016,42 +1043,22 @@ export default function App() {
             />
             </ChartErrorBoundary>
             {/* 通用悬浮: 板块共振排名(所有tab), K线右上角 */}
-            {currentStock && boardRanks && boardRanks.length > 0 && (
+            {currentStock && boardRanksTotal > 0 && (
               <div style={{ position: 'absolute', top: 8, right: 10, zIndex: 15, display: 'flex', gap: 6, alignItems: 'flex-start', width: 'auto', height: 'auto' }}>
                 <span className="range-btn"
                   onClick={() => setShowBoardRanks(!showBoardRanks)}
                   title="所属板块当日共振排名(买入共振分: 买×2+强×1-卖×0.3)"
                   style={{ fontSize: 11, padding: '1px 8px', cursor: 'pointer',
-                    color: boardRanks[0].rank <= 50 ? '#f0883e' : 'var(--text-muted)',
-                    borderColor: boardRanks[0].rank <= 50 ? '#f0883e' : undefined,
+                    color: (boardRanks?.[0]?.rank ?? 999) <= 50 ? '#f0883e' : 'var(--text-muted)',
+                    borderColor: (boardRanks?.[0]?.rank ?? 999) <= 50 ? '#f0883e' : undefined,
                     background: 'var(--bg, #0d1117)' }}>
-                  板块共振 {boardRanks.length}
+                  板块共振 {Math.max(boardRanksTotal, boardRanks?.length ?? 0)}
                 </span>
               </div>
             )}
-            {currentStock && showBoardRanks && boardRanks && boardRanks.length > 0 && (
-              <div style={{
-                position: 'absolute', top: 36, right: 10, zIndex: 15, width: 320, height: 'auto',
-                background: 'var(--bg, #0d1117)', border: '1px solid var(--border, #30363d)', borderRadius: 8,
-                boxShadow: '0 8px 24px rgba(0,0,0,0.5)', padding: '10px 12px', fontSize: 11,
-                maxHeight: '70%', overflow: 'auto' }}>
-                <div style={{ fontWeight: 600, marginBottom: 8, color: 'var(--text-muted)' }}>
-                  {currentStock.name} 所属板块共振排名 <span style={{ fontWeight: 400 }}>({boardRanksDate} 买入共振分)</span>
-                </div>
-                {boardRanks.map(b => (
-                  <div key={b.concept} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 0', borderBottom: '1px solid var(--border-subtle, rgba(240,246,252,0.06))' }}>
-                    <span style={{ width: 42, flexShrink: 0, fontWeight: 600, color: b.rank <= 50 ? '#f0883e' : 'var(--text-muted)' }}>#{b.rank}</span>
-                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.concept}</span>
-                    <span style={{ color: '#f0883e', fontWeight: 600 }}>{b.buy}买</span>
-                    <span style={{ color: '#58a6ff' }}>{b.sell}卖</span>
-                    {b.strong > 0 && <span style={{ color: '#3fb950' }}>{b.strong}强</span>}
-                    <span style={{ color: 'var(--text-muted)' }}>分{b.score}</span>
-                  </div>
-                ))}
-                <div style={{ marginTop: 8, fontSize: 10, color: 'var(--text-muted)' }}>
-                  全市场当日有信号板块 {boardRanks[0]?.total || '-'} 个 · #1 为买点最密集板块
-                </div>
-              </div>
+            {currentStock && showBoardRanks && boardRanksTotal > 0 && (
+              <BoardRanksPanel name={currentStock.name} groups={boardRanksGroups} items={boardRanks ?? []}
+                total={boardRanksTotal} date={boardRanksDate} onClose={() => setShowBoardRanks(false)} />
             )}
             {(!currentStock || !kline) && (
               <div style={{
@@ -1337,10 +1344,12 @@ export default function App() {
                         fetch(`/stockscope/api/board/ranks?symbol=${s.symbol}&date=${d}&dimension=${boardDim}`)
                           .then(r => r.json()).then(r => {
                             setBoardRanks(r.items || null)
+                            setBoardRanksGroups(r.groups || null)
+                            setBoardRanksTotal(r.total || 0)
                             setBoardRanksDate(r.date || d)
                             setShowBoardRanks(false)
                           }).catch(() => setBoardRanks(null))
-                      } else { setBoardRanks(null) }
+                      } else { setBoardRanks(null); setBoardRanksGroups(null); setBoardRanksTotal(0) }
                     }}>
                     <div style={{ flex: 1 }}>
                       <span className="wl-sym">{s.symbol}</span>
