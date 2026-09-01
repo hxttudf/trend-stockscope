@@ -1213,13 +1213,13 @@ def api_board_ranks():
     conn = db_conn(TREND_DB)
     ccon = db_conn(CONCEPT_DB)
     try:
-        # date缺省: 取该股最近有信号的日期
+        # date缺省: 取全市场最新信号日(自选/搜索点开=看"当前"共振; 缠论tab点信号由前端显式传信号日)
         if not date:
             r = conn.execute(
-                "SELECT MAX(signal_date) FROM chanlun_signals WHERE symbol=? AND status='ok'", (symbol,)).fetchone()
+                "SELECT MAX(signal_date) FROM chanlun_signals WHERE status='ok' AND category!='index'").fetchone()
             date = r[0] if r and r[0] else None
         if not date:
-            return jsonify({"items": [], "error": "该股无历史信号, 无法定位日期", "symbol": symbol})
+            return jsonify({"items": [], "error": "无信号数据", "symbol": symbol})
         # 该股所属板块 + 所属板块当日成分信号
         try:
             my_boards = [r[0] for r in ccon.execute(

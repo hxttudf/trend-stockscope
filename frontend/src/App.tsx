@@ -140,6 +140,7 @@ export default function App() {
   const [boardSplit, setBoardSplit] = useState(80)  // K线区高度百分比(默认4/5, 矩阵只露~4行), 可拖拽
   const [boardDateSort, setBoardDateSort] = useState<{ date: string; dir: 'asc' | 'desc' } | null>(null)  // 按某日期信号数排序
   const [boardRanks, setBoardRanks] = useState<any[] | null>(null)  // 当前标的的板块共振排名(null=未加载/无)
+  const [boardRanksDate, setBoardRanksDate] = useState('')  // 共振排名对应的信号日
   const [showBoardRanks, setShowBoardRanks] = useState(false)  // 悬浮面板显隐
   const [chanlunEtf, setChanlunEtf] = useState(false)  // 缠论tab: 只看ETF信号
   const [chanlunIndex, setChanlunIndex] = useState(false)  // 缠论tab: 只看指数信号
@@ -344,11 +345,12 @@ export default function App() {
     setSignals(data.signals)
     // 有指定信号日期则跳转到该日期，否则定位最新K线(不跳选股信号日期—选股信号可能很旧)
     setFocusDate(signalDate || null)
-    // 拉取该股所属板块共振排名(所有tab通用; date缺省=后端取该股最近信号日)
+    // 拉取该股所属板块共振排名(所有tab通用; date缺省=全市场最新信号日)
     fetch(`/stockscope/api/board/ranks?symbol=${symbol}`)
       .then(r => r.json()).then(r => {
         if (seq !== loadSeq.current) return
         setBoardRanks(r.items || null)
+        setBoardRanksDate(r.date || '')
         setShowBoardRanks(false)
       }).catch(() => { if (seq === loadSeq.current) setBoardRanks(null) })
   }, [qfq, selectedPickDate])
@@ -1034,7 +1036,7 @@ export default function App() {
                 boxShadow: '0 8px 24px rgba(0,0,0,0.5)', padding: '10px 12px', fontSize: 11,
                 maxHeight: '70%', overflow: 'auto' }}>
                 <div style={{ fontWeight: 600, marginBottom: 8, color: 'var(--text-muted)' }}>
-                  {currentStock.name} 所属板块共振排名 <span style={{ fontWeight: 400 }}>({boardPreview ? '盘中' : '正式'} 买入共振分)</span>
+                  {currentStock.name} 所属板块共振排名 <span style={{ fontWeight: 400 }}>({boardRanksDate} 买入共振分)</span>
                 </div>
                 {boardRanks.map(b => (
                   <div key={b.concept} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 0', borderBottom: '1px solid var(--border-subtle, rgba(240,246,252,0.06))' }}>
@@ -1335,6 +1337,7 @@ export default function App() {
                         fetch(`/stockscope/api/board/ranks?symbol=${s.symbol}&date=${d}&dimension=${boardDim}`)
                           .then(r => r.json()).then(r => {
                             setBoardRanks(r.items || null)
+                            setBoardRanksDate(r.date || d)
                             setShowBoardRanks(false)
                           }).catch(() => setBoardRanks(null))
                       } else { setBoardRanks(null) }
