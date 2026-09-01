@@ -1035,11 +1035,22 @@ def api_board_matrix():
     conn = db_conn(TREND_DB)
     ccon = db_conn(CONCEPT_DB)
     try:
-        # 最近N个日期 — 日期轴统一用signal_date(正式用chanlun、盘中用preview的signal_date), 保证盘中不带未来批次日期
+        # 最近N个日期 — 盘中模式: 正式表日期轴为主 + 盘中最新批次的signal_date作前沿列(混合视图)
+        pv_max = pv_seq = pv_sig = None
         if preview:
-            dates = [r[0] for r in conn.execute(
-                "SELECT DISTINCT signal_date FROM preview_signals WHERE category!='index' "
+            pv_max = conn.execute("SELECT MAX(batch_date) FROM preview_signals").fetchone()[0]
+            pv_seq = conn.execute(
+                "SELECT MAX(batch_seq) FROM preview_signals WHERE batch_date=?", (pv_max,)).fetchone()[0]
+            pv_sig = conn.execute(
+                "SELECT MAX(signal_date) FROM preview_signals WHERE batch_date=? AND batch_seq=? AND category!='index'",
+                (pv_max, pv_seq)).fetchone()[0]
+            base_dates = [r[0] for r in conn.execute(
+                "SELECT DISTINCT signal_date FROM chanlun_signals WHERE status='ok' AND category!='index' "
                 "ORDER BY signal_date DESC LIMIT ?", (days,)).fetchall()]
+            dates = list(base_dates)
+            if pv_sig and pv_sig not in dates:
+                dates.append(pv_sig)  # 盘中前沿列追加到正式日期轴
+            dates = sorted(dates, reverse=True)[-days:]  # 降序(新→旧), 与else分支一致, 共享reversed()后即旧→新
         else:
             dates = [r[0] for r in conn.execute(
                 "SELECT DISTINCT signal_date FROM chanlun_signals WHERE status='ok' AND category!='index' "
@@ -1058,15 +1069,23 @@ def api_board_matrix():
         for code, concept in mem:
             cmap.setdefault(code.zfill(6), set()).add(concept)
         # 聚合 (concept, date) -> [buy, sell, strong, total]
-        if preview:
-            # 盘中: 取最新批次(batch_date最大+batch_seq最大)的信号, 按signal_date聚合(与正式同轴)
-            pv_max = conn.execute("SELECT MAX(batch_date) FROM preview_signals").fetchone()[0]
-            pv_seq = conn.execute(
-                "SELECT MAX(batch_seq) FROM preview_signals WHERE batch_date=?", (pv_max,)).fetchone()[0]
-            sigs2 = conn.execute(
+        # 盘中混合: 正式表出历史列, 最新盘中批次出前沿列(pv_sig), 前沿列覆盖正式同日
+        if preview and pv_sig:
+            sigs_formal = conn.execute(
+                f"SELECT symbol, signal_type, strength, signal_date FROM chanlun_signals "
+                f"WHERE signal_date IN ({ph}) AND status='ok' AND category!='index' "
+                f"AND signal_date < ?", dates + [pv_sig]).fetchall()
+            sigs_pv = conn.execute(
                 f"SELECT symbol, signal_type, strength, signal_date FROM preview_signals "
                 f"WHERE batch_date=? AND batch_seq=? AND signal_date IN ({ph}) AND category!='index'",
                 [pv_max, pv_seq] + dates).fetchall()
+            sigs2 = sigs_formal + sigs_pv
+        elif preview:
+            # 无盘中前沿(批次异常): 回退正式表
+            sigs2 = conn.execute(
+                f"SELECT symbol, signal_type, strength, signal_date FROM chanlun_signals "
+                f"WHERE signal_date IN ({ph}) AND status='ok' AND category!='index'",
+                dates).fetchall()
         else:
             sigs2 = conn.execute(
                 f"SELECT symbol, signal_type, strength, signal_date FROM chanlun_signals "
@@ -1113,7 +1132,7 @@ def api_board_matrix():
                 b, s, st, t = agg.get((concept, d), [0, 0, 0, 0])
                 row["cells"].append({"date": d, "buy": b, "sell": s, "strong": st, "total": t})
             rows.append(row)
-        out = {"dates": dates, "boards": rows, "dimension": dimension, "preview": preview, "sort": sort_mode}
+        out = {"dates": dates, "boards": rows, "dimension": dimension, "preview": preview, "sort": sort_mode, "preview_date": pv_sig if (preview and pv_sig) else None}
         # DB持久化缓存
         cc = db_conn(TREND_DB)
         try:
