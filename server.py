@@ -1264,7 +1264,7 @@ def api_board_ranks():
         # 该股当日自身信号(一次查出, 各维度共用)
         my_sig_types = [r[0] for r in conn.execute(
             "SELECT signal_type FROM chanlun_signals WHERE symbol=? AND signal_date=? AND status='ok'", (symbol, date)).fetchall()]
-        dims = ["concept", "industry"] if dimension == "all" else [dimension]
+        dims = ["industry", "concept", "region"] if dimension == "all" else [dimension]
         groups = []
         for dim in dims:
             try:

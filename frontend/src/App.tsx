@@ -95,7 +95,7 @@ class ChartErrorBoundary extends Component<{ children: ReactNode }, { error: str
 }
 
 // ── 板块共振排名悬浮面板(概念/行业分组) ──
-const DIM_LABEL: Record<string, string> = { concept: '概念板块', industry: '行业板块' }
+const DIM_LABEL: Record<string, string> = { concept: '概念板块', industry: '行业板块', region: '地域板块' }
 function BoardRanksPanel(props: {
   name: string; groups: any[] | null; items: any[]; total: number; date: string
   onClose: () => void
@@ -157,7 +157,7 @@ function BoardRanksPanel(props: {
       </div>
       {showGroups.map((g: any) => (
         <div key={g.dimension}>
-          <div style={{ fontWeight: 600, margin: '6px 0 2px', color: g.dimension === 'industry' ? '#58a6ff' : '#f0883e' }}>
+          <div style={{ fontWeight: 600, margin: '6px 0 2px', color: g.dimension === 'industry' ? '#58a6ff' : g.dimension === 'region' ? '#a371f7' : '#f0883e' }}>
             {DIM_LABEL[g.dimension] || g.dimension} <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>{g.items.length}个 · 当日全市场{g.items[0]?.total ?? '-'}板块参与排名</span>
           </div>
           {g.items.map(rowsOf)}
@@ -207,7 +207,7 @@ export default function App() {
   // ── 缠论板块共振 ──
   const [boardMatrix, setBoardMatrix] = useState<{ dates: string[]; boards: { name: string; cells: { date: string; buy: number; sell: number; strong: number; total: number }[] }[] } | null>(null)
   const [boardDays, setBoardDays] = useState(15)
-  const [boardDim, setBoardDim] = useState('concept')  // concept|industry|region
+  const [boardDim, setBoardDim] = useState('industry')  // industry|concept|region (回测: 行业共振显著强于概念, 默认行业)
   const [boardPreview, setBoardPreview] = useState(false)  // 盘中预览
   const [boardSort, setBoardSort] = useState('buy')  // buy=买入共振 / sell=卖压纯度
   const [boardSel, setBoardSel] = useState<{ date: string; concept: string } | null>(null)
@@ -867,7 +867,7 @@ export default function App() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10, flexShrink: 0, height: 'auto', flexWrap: 'wrap', order: 2 }}>
                 <span style={{ fontSize: 15, fontWeight: 600 }}>缠论板块共振</span>
                 <span style={{ display: 'flex', gap: 4, alignItems: 'center', fontSize: 11 }}>
-                  {[['concept', '概念'], ['industry', '行业'], ['region', '地域']].map(([v, l]) => (
+                  {[['industry', '行业'], ['concept', '概念'], ['region', '地域']].map(([v, l]) => (
                     <button key={v} className={`range-btn ${boardDim === v ? 'active' : ''}`}
                       onClick={() => setBoardDim(v)} style={{ fontSize: 11, padding: '2px 8px' }}>{l}</button>
                   ))}
