@@ -1015,7 +1015,7 @@ export default function App() {
             </ChartErrorBoundary>
             {/* 通用悬浮: 板块共振排名(所有tab), K线右上角 */}
             {currentStock && boardRanks && boardRanks.length > 0 && (
-              <div style={{ position: 'absolute', top: 8, right: 10, zIndex: 15, display: 'flex', gap: 6, alignItems: 'center' }}>
+              <div style={{ position: 'absolute', top: 8, right: 10, zIndex: 15, display: 'flex', gap: 6, alignItems: 'flex-start', width: 'auto', height: 'auto' }}>
                 <span className="range-btn"
                   onClick={() => setShowBoardRanks(!showBoardRanks)}
                   title="所属板块当日共振排名(买入共振分: 买×2+强×1-卖×0.3)"
@@ -1029,7 +1029,7 @@ export default function App() {
             )}
             {currentStock && showBoardRanks && boardRanks && boardRanks.length > 0 && (
               <div style={{
-                position: 'absolute', top: 36, right: 10, zIndex: 15, width: 320,
+                position: 'absolute', top: 36, right: 10, zIndex: 15, width: 320, height: 'auto',
                 background: 'var(--bg, #0d1117)', border: '1px solid var(--border, #30363d)', borderRadius: 8,
                 boxShadow: '0 8px 24px rgba(0,0,0,0.5)', padding: '10px 12px', fontSize: 11,
                 maxHeight: '70%', overflow: 'auto' }}>
