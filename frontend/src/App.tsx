@@ -103,6 +103,35 @@ function BoardRanksPanel(props: {
   const { name, groups, items, total, date, onClose } = props
   // 无groups时按单一概念组渲染(兼容旧数据)
   const showGroups = groups && groups.length > 0 ? groups : (items?.length ? [{ dimension: 'concept', items }] : [])
+  // 可拖动: 标题栏mousedown拖拽, 位置state(初始=右上角); 记录容器尺寸防拖出
+  const panelRef = useRef<HTMLDivElement>(null)
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null)
+  const dragRef = useRef<{ dx: number; dy: number } | null>(null)
+  const onDragStart = (e: React.MouseEvent) => {
+    const el = panelRef.current
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    dragRef.current = { dx: e.clientX - rect.left, dy: e.clientY - rect.top }
+    const onMove = (ev: MouseEvent) => {
+      const parent = el.parentElement?.getBoundingClientRect()
+      if (!parent || !dragRef.current) return
+      // 相对容器定位, 钳制在容器内(至少露出标题栏)
+      let left = ev.clientX - dragRef.current.dx - parent.left
+      let top = ev.clientY - dragRef.current.dy - parent.top
+      left = Math.max(0, Math.min(left, parent.width - 60))
+      top = Math.max(0, Math.min(top, parent.height - 24))
+      setPos({ left, top })
+    }
+    const onUp = () => {
+      dragRef.current = null
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    e.preventDefault()
+    e.stopPropagation()
+  }
   const rowsOf = (it: any) => (
     <div key={it.dimension + ':' + it.concept} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 0', borderBottom: '1px solid var(--border-subtle, rgba(240,246,252,0.06))' }}>
       <span style={{ width: 42, flexShrink: 0, fontWeight: 600, color: it.rank <= 50 ? '#f0883e' : 'var(--text-muted)' }}>#{it.rank}</span>
@@ -114,12 +143,13 @@ function BoardRanksPanel(props: {
     </div>
   )
   return (
-    <div style={{
-      position: 'absolute', top: 36, right: 10, zIndex: 15, width: 330, height: 'auto',
+    <div ref={panelRef} style={{
+      position: 'absolute', zIndex: 15, width: 330, height: 'auto',
+      ...(pos ? { left: pos.left, top: pos.top, right: 'auto' as const } : { top: 36, right: 10 }),
       background: 'var(--bg, #0d1117)', border: '1px solid var(--border, #30363d)', borderRadius: 8,
       boxShadow: '0 8px 24px rgba(0,0,0,0.5)', padding: '10px 12px', fontSize: 11,
       maxHeight: '70%', overflow: 'auto' }}>
-      <div style={{ fontWeight: 600, marginBottom: 6, color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div onMouseDown={onDragStart} title="按住标题栏拖动" style={{ fontWeight: 600, marginBottom: 6, color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'move', userSelect: 'none', marginLeft: -4, paddingLeft: 4 }}>
         <span>{name} 所属板块共振排名 <span style={{ fontWeight: 400 }}>({date} 买入共振分)</span>
           {items[0] && !items[0].has_my_signal && <span style={{ fontWeight: 400, color: '#f0883e' }}> · 该股当日无信号, 仅板块背景</span>}
         </span>
