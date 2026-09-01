@@ -994,6 +994,9 @@ BOARD_BLACKLIST = {'昨日涨停', '昨日涨停_含一字', '昨日首板', '�
                    '上证A股', '深证A股', '创业板综', '科创50_', '融资标的', '深股通标的',
                    'QFII重仓', '社保重仓', '信托重仓', '券商重仓', '保险重仓', '标普道琼斯A股',
                    '央视50', '沪股通标的', '富时A股', '深证100', '沪深300成份', '上证50成份',
+                   # DB实际板块名带下划线变体漏网(9/1排查: hover面板出现HS300_/上证180_)
+                   'HS300_', '上证180_', '上证50_', '央视50_', '深证100R',
+                   '消费风格', '科技风格', '金融地产风格', '医药医疗风格', '先进制造风格',
                    '小盘价值', '低市净率', '参股银行', '参股保险', '参股券商', '股权激励', '最近多板',
                    '先进制造风格', '高质押', '高商誉', '高贝塔', '高负债率', '低价转债',
                    '破发破净', '昨日上榜', '昨日触板', '昨日跌停', '昨日强势', '昨日弱势',
@@ -1242,11 +1245,16 @@ def api_board_ranks():
     conn = db_conn(TREND_DB)
     ccon = db_conn(CONCEPT_DB)
     try:
-        # date缺省: 取全市场最新信号日(自选/搜索点开=看"当前"共振; 缠论tab点信号由前端显式传信号日)
+        # date缺省: ①该股自己最近信号日(共振排名必须跟着票的信号日走, 票无信号的日子摆排名无意义)
+        #           ②该股从未有信号→退回全市场最新信号日(仅板块背景, has_my_signal=false)
         if not date:
             r = conn.execute(
-                "SELECT MAX(signal_date) FROM chanlun_signals WHERE status='ok' AND category!='index'").fetchone()
+                "SELECT MAX(signal_date) FROM chanlun_signals WHERE symbol=? AND status='ok'", (symbol,)).fetchone()
             date = r[0] if r and r[0] else None
+            if not date:
+                r = conn.execute(
+                    "SELECT MAX(signal_date) FROM chanlun_signals WHERE status='ok' AND category!='index'").fetchone()
+                date = r[0] if r and r[0] else None
         if not date:
             return jsonify({"items": [], "error": "无信号数据", "symbol": symbol})
         # 全市场当日信号(一次查出, 各维度共用)

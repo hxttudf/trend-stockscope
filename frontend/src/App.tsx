@@ -120,7 +120,9 @@ function BoardRanksPanel(props: {
       boxShadow: '0 8px 24px rgba(0,0,0,0.5)', padding: '10px 12px', fontSize: 11,
       maxHeight: '70%', overflow: 'auto' }}>
       <div style={{ fontWeight: 600, marginBottom: 6, color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span>{name} 所属板块共振排名 <span style={{ fontWeight: 400 }}>({date} 买入共振分)</span></span>
+        <span>{name} 所属板块共振排名 <span style={{ fontWeight: 400 }}>({date} 买入共振分)</span>
+          {items[0] && !items[0].has_my_signal && <span style={{ fontWeight: 400, color: '#f0883e' }}> · 该股当日无信号, 仅板块背景</span>}
+        </span>
         <span className="range-btn" style={{ fontSize: 10, padding: '0 6px', cursor: 'pointer' }} onClick={onClose}>✕</span>
       </div>
       {showGroups.map((g: any) => (
