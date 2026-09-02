@@ -22,6 +22,7 @@ interface ChanlunData {
   chain: { time: string; type: string; price: number }[]
   sell_chain: { time: string; type: string; price: number }[]
   db_signals?: { time: string; type: string; price: number; status?: string; confirmed_later?: number; confirm_days?: number; ov_days?: number }[]  // DB全历史信号(K线markers)
+  preview_signals?: { time: string; type: string; price: number; status: 'preview'; strength?: string }[]  // 盘中预信号(未确认, 半透明+?展示)
   cur_price: number
   cur_date: string
 }
@@ -664,6 +665,11 @@ function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef, zsAsOf, onZ
           const pos: 'belowBar' | 'aboveBar' = (s.type || '').includes('卖') ? 'aboveBar' : 'belowBar'
           return { ...s, pos }
         }),
+        // 盘中预信号(未确认): 半透明+?后缀与正式信号区分(预览正式化后自动消失)
+        ...(chanlun.preview_signals || []).map((s: any) => {
+          const pos: 'belowBar' | 'aboveBar' = (s.type || '').includes('卖') ? 'aboveBar' : 'belowBar'
+          return { ...s, pos, preview: true }
+        }),
       ]
       // 全部信号markers构建(不限制数量) — 渲染时按可视区域过滤
       // status=ok画原色(1买/后1买); status=error画灰色✗(✗1买=当时确认被推翻, ✗后1买=事后确认被推翻)
@@ -678,12 +684,14 @@ function ChanlunOverlay({ chanlun, kline, chartRef, candleSeriesRef, zsAsOf, onZ
         const pos = bs.pos || (bs.type.includes('卖') ? 'aboveBar' : 'belowBar')
         const isOv = bs.status === 'error'
         const isLater = bs.confirmed_later === 1
+        const isPv = !!(bs as any).preview && !isOv
         // 延迟天数标注: 被推翻标推翻延迟(✗1买(3)=+3天推翻); 事后确认标确认延迟(后1买(3)=+3天确认)
         const daysSuffix = isOv
           ? (bs.ov_days != null ? `(${bs.ov_days})` : '')
           : (isLater ? (bs.confirm_days != null ? `(${bs.confirm_days})` : '') : '')
-        const text = (isOv ? '✗' : '') + (isLater ? '后' : '') + c.label + daysSuffix
-        const color = isOv ? '#8b949e' : c.color
+        const text = (isOv ? '✗' : '') + (isLater ? '后' : '') + c.label + (isPv ? '?' : '') + daysSuffix
+        // 预信号: 同色系半透明45%(未确认=虚化); 正式=实色; 推翻=灰
+        const color = isOv ? '#8b949e' : isPv ? c.color + '73' : c.color
         if (bs.time) allMarkers.push({
           time: toBD(bs.time), position: pos, color,
           shape: pos === 'aboveBar' ? 'arrowDown' : 'arrowUp', text,

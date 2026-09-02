@@ -898,6 +898,16 @@ def api_chanlun(symbol):
                             "status": st, "confirmed_date": cd, "confirmed_later": cl,
                             "confirm_days": confirm_days.get((ty, t)), "ov_days": ov_days.get((ty, t))}
                            for ty, t, p, st, cd, cl, od in dbs]
+        # 盘中预信号(preview_signals最新批次): status='preview'标记, K线用半透明+?后缀与正式信号区分
+        pv_rows = mp.execute(
+            "SELECT signal_type, signal_date, price, strength FROM preview_signals "
+            "WHERE symbol=? AND status='preview' AND (batch_date, batch_seq) IN "
+            "(SELECT batch_date, batch_seq FROM preview_signals ORDER BY batch_date DESC, batch_seq DESC LIMIT 1)",
+            (symbol,)).fetchall()
+        if pv_rows:
+            d["preview_signals"] = [{"time": t, "type": ty, "price": round(p, 2) if p else 0,
+                                     "status": "preview", "strength": st}
+                                    for ty, t, p, st in pv_rows]
         mp.close()
         for t, sd, p, cd, cl in errs:
             d.setdefault("buy_sell", []).append(
