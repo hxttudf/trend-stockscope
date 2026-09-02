@@ -1132,15 +1132,6 @@ export default function App() {
             onClick={() => setSidebarTab('chanlun_board')}>
               缠论板块
             </button>
-          {sidebarTab === 'chanlun_board' && (
-            <span
-              className={`range-btn ${boardPreview ? 'active' : ''}`}
-              onClick={() => setBoardPreview(!boardPreview)}
-              title="盘中预览: 用最新盘中批次信号(未确认); 关闭=正式已确认信号"
-              style={{ flex: 'none', alignSelf: 'center', margin: '0 6px', fontSize: 11, padding: '2px 6px', cursor: 'pointer', color: boardPreview ? '#a371f7' : undefined, borderColor: boardPreview ? '#a371f7' : undefined }}>
-              🕐 盘中{boardPreview ? 'ON' : 'OFF'}
-            </span>
-          )}
           </div>
 
           {sidebarTab === 'watchlist' ? (
@@ -1352,6 +1343,16 @@ export default function App() {
             </div>
           ) : sidebarTab === 'chanlun_board' ? (
             <div className="watchlist-items">
+              {/* 盘中预览开关(与缠论tab同位置同款式) */}
+              <div style={{ padding: '4px 8px', borderBottom: '1px solid var(--border)' }}>
+                <span
+                  className={`range-btn ${boardPreview ? 'active' : ''}`}
+                  onClick={() => setBoardPreview(!boardPreview)}
+                  title="盘中预览: 用最新盘中批次信号(未确认); 关闭=正式已确认信号"
+                  style={{ fontSize: 11, padding: '2px 6px', cursor: 'pointer', color: boardPreview ? '#a371f7' : undefined, borderColor: boardPreview ? '#a371f7' : undefined }}>
+                  🕐 盘中{boardPreview ? 'ON' : 'OFF'}
+                </span>
+              </div>
               {/* 选中板块/日期标题 */}
               <div style={{ padding: '8px 10px', fontSize: 12, borderBottom: '1px solid var(--border)', color: 'var(--text-muted)' }}>
                 {boardSel ? (
