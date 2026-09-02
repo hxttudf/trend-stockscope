@@ -1137,7 +1137,7 @@ export default function App() {
               className={`range-btn ${boardPreview ? 'active' : ''}`}
               onClick={() => setBoardPreview(!boardPreview)}
               title="盘中预览: 用最新盘中批次信号(未确认); 关闭=正式已确认信号"
-              style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 11, padding: '2px 6px', cursor: 'pointer', color: boardPreview ? '#a371f7' : undefined, borderColor: boardPreview ? '#a371f7' : undefined }}>
+              style={{ flex: 'none', alignSelf: 'center', margin: '0 6px', fontSize: 11, padding: '2px 6px', cursor: 'pointer', color: boardPreview ? '#a371f7' : undefined, borderColor: boardPreview ? '#a371f7' : undefined }}>
               🕐 盘中{boardPreview ? 'ON' : 'OFF'}
             </span>
           )}
