@@ -1063,7 +1063,7 @@ def api_board_matrix():
             dates = list(base_dates)
             if pv_sig and pv_sig not in dates:
                 dates.append(pv_sig)  # 盘中前沿列追加到正式日期轴
-            dates = sorted(dates, reverse=True)[-days:]  # 降序(新→旧), 与else分支一致, 共享reversed()后即旧→新
+            dates = sorted(dates, reverse=True)[:days]  # 降序(新→旧)取前N=最新N天; 共享reversed()后即旧→新
         else:
             dates = [r[0] for r in conn.execute(
                 "SELECT DISTINCT signal_date FROM chanlun_signals WHERE status='ok' AND category!='index' "

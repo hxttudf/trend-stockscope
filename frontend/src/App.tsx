@@ -872,13 +872,6 @@ export default function App() {
                       onClick={() => setBoardDim(v)} style={{ fontSize: 11, padding: '2px 8px' }}>{l}</button>
                   ))}
                   <span
-                    className={`range-btn ${boardPreview ? 'active' : ''}`}
-                    onClick={() => setBoardPreview(!boardPreview)}
-                    title="盘中预览: 用最新盘中批次信号(未确认); 关闭=正式已确认信号"
-                    style={{ fontSize: 11, padding: '2px 6px', cursor: 'pointer', color: boardPreview ? '#a371f7' : undefined, borderColor: boardPreview ? '#a371f7' : undefined }}>
-                    🕐 盘中{boardPreview ? 'ON' : 'OFF'}
-                  </span>
-                  <span
                     className={`range-btn ${boardSort === 'sell' ? 'active' : ''}`}
                     onClick={() => setBoardSort(boardSort === 'buy' ? 'sell' : 'buy')}
                     title="排序: 买入共振=买点聚集板块优先(回测胜率76%) / 卖压纯度=卖压集中板块优先(回测ρ-0.111)"
@@ -1139,6 +1132,15 @@ export default function App() {
             onClick={() => setSidebarTab('chanlun_board')}>
               缠论板块
             </button>
+          {sidebarTab === 'chanlun_board' && (
+            <span
+              className={`range-btn ${boardPreview ? 'active' : ''}`}
+              onClick={() => setBoardPreview(!boardPreview)}
+              title="盘中预览: 用最新盘中批次信号(未确认); 关闭=正式已确认信号"
+              style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 11, padding: '2px 6px', cursor: 'pointer', color: boardPreview ? '#a371f7' : undefined, borderColor: boardPreview ? '#a371f7' : undefined }}>
+              🕐 盘中{boardPreview ? 'ON' : 'OFF'}
+            </span>
+          )}
           </div>
 
           {sidebarTab === 'watchlist' ? (

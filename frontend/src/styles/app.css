@@ -234,6 +234,7 @@ body {
 
 .wl-tabs {
   display: flex;
+  position: relative;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
