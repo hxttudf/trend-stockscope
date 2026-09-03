@@ -1325,7 +1325,7 @@ export default function App() {
                       </div>
                       <div className="pc-tags" style={{ flexShrink: 0 }}>
                         {s.strength === 'strong' && (
-                          <span className="pick-tag" style={{ color: '#3fb950', borderColor: '#3fb950' }}>🟢强{s.score?.toFixed(0)}</span>
+                          <span className="pick-tag" style={{ color: '#3fb950', borderColor: '#3fb950' }}>强{s.score?.toFixed(0)}</span>
                         )}
                         {s.strength === 'weak' && (
                           <span className="pick-tag" style={{ color: '#f85149', borderColor: '#f85149' }}>🔴弱{s.score?.toFixed(0)}</span>
@@ -1403,7 +1403,7 @@ export default function App() {
                     </div>
                     <div className="pc-tags" style={{ flexShrink: 0 }}>
                       {s.strength === 'strong' && (
-                        <span className="pick-tag" style={{ color: '#3fb950', borderColor: '#3fb950' }}>🟢强{s.score?.toFixed(0)}</span>
+                        <span className="pick-tag" style={{ color: '#3fb950', borderColor: '#3fb950' }}>强{s.score?.toFixed(0)}</span>
                       )}
                       {s.strength === 'weak' && (
                         <span className="pick-tag" style={{ color: '#f85149', borderColor: '#f85149' }}>🔴弱{s.score?.toFixed(0)}</span>
