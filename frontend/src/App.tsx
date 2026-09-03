@@ -94,6 +94,16 @@ class ChartErrorBoundary extends Component<{ children: ReactNode }, { error: str
   }
 }
 
+// ── 板块角标: 创业板[创]/科创板[科] (代码前缀判定, 橙色) ──
+function MarketBadge({ symbol }: { symbol: string }) {
+  const s = String(symbol || '').padStart(6, '0')
+  let label = ''
+  if (s.startsWith('300') || s.startsWith('301')) label = '创'
+  else if (s.startsWith('688') || s.startsWith('689')) label = '科'
+  if (!label) return null
+  return <span style={{ color: '#f0883e', fontSize: '0.9em', marginLeft: 2 }}>[{label}]</span>
+}
+
 // ── 板块共振排名悬浮面板(概念/行业分组) ──
 const DIM_LABEL: Record<string, string> = { concept: '概念板块', industry: '行业板块', region: '地域板块' }
 function BoardRanksPanel(props: {
@@ -804,6 +814,7 @@ export default function App() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, overflow: 'hidden', flexWrap: 'nowrap', whiteSpace: 'nowrap' }}>
             <span className="symbol">{currentStock.symbol}</span>
             <span className="name">{currentStock.name}</span>
+            <MarketBadge symbol={currentStock.symbol} />
             {kline?.mktcap ? (
               <span style={{ fontSize: 12, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
                 总市值 {(kline.mktcap / 10000).toFixed(1)}亿
@@ -1155,6 +1166,7 @@ export default function App() {
                     <span className="drag-handle">⋮⋮</span>
                     <span className="wl-sym">{item.symbol}</span>
                     <span className="wl-name">{item.name}</span>
+                    <MarketBadge symbol={item.symbol} />
                     <button className="wl-remove"
                       onClick={e => { e.stopPropagation(); handleRemoveWatchlist(item.symbol) }}>
                       ×
@@ -1202,6 +1214,7 @@ export default function App() {
                     <div style={{ flex: 1 }}>
                       <span className="wl-sym">{p.symbol}</span>
                       <span className="wl-name">{p.name}</span>
+                      <MarketBadge symbol={p.symbol} />
                     </div>
                     <div className="pc-tags" style={{ flexShrink: 0 }}>
                       {p.strategy_id?.split(',').map((st: string) => (
@@ -1311,6 +1324,7 @@ export default function App() {
                       <div style={{ flex: 1 }}>
                         <span className="wl-sym">{s.symbol}</span>
                         <span className="wl-name">{s.name}</span>
+                        <MarketBadge symbol={s.symbol} />
                       </div>
                       <div className="pc-tags" style={{ flexShrink: 0 }}>
                         {s.strength === 'strong' && (
@@ -1389,6 +1403,7 @@ export default function App() {
                     <div style={{ flex: 1 }}>
                       <span className="wl-sym">{s.symbol}</span>
                       <span className="wl-name">{s.name}</span>
+                      <MarketBadge symbol={s.symbol} />
                     </div>
                     <div className="pc-tags" style={{ flexShrink: 0 }}>
                       {s.strength === 'strong' && (
@@ -1445,6 +1460,7 @@ export default function App() {
                     <div style={{ flex: 1 }}>
                       <span className="wl-sym">{p.symbol}</span>
                       <span className="wl-name">{p.name}</span>
+                      <MarketBadge symbol={p.symbol} />
                     </div>
                     <div className="pc-tags" style={{ flexShrink: 0 }}>
                       <span className={`pick-tag ${p.status === 'worth' ? 'premium_b' : 'ultra_shrink'}`}>
