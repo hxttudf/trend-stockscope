@@ -94,14 +94,15 @@ class ChartErrorBoundary extends Component<{ children: ReactNode }, { error: str
   }
 }
 
-// ── 板块角标: 创业板[创]/科创板[科] (代码前缀判定, 橙色) ──
+// ── 板块角标: 创业板[创]/科创板[科] (代码前缀判定) ──
+const BOARD_BADGE: Record<string, string> = { '创': '#f0883e', '科': '#e8b339' }  // 创=标准橙, 科=金橙
 function MarketBadge({ symbol }: { symbol: string }) {
   const s = String(symbol || '').padStart(6, '0')
   let label = ''
-  if (s.startsWith('300') || s.startsWith('301')) label = '创'
-  else if (s.startsWith('688') || s.startsWith('689')) label = '科'
+  if (s.startsWith('300') || s.startsWith('301') || s.startsWith('302')) label = '创'
+  else if (s.startsWith('688') || s.startsWith('689') || s.startsWith('693')) label = '科'
   if (!label) return null
-  return <span style={{ color: '#f0883e', fontSize: '0.9em', marginLeft: 2 }}>[{label}]</span>
+  return <span style={{ color: BOARD_BADGE[label], marginLeft: 2 }}>[{label}]</span>
 }
 
 // ── 板块共振排名悬浮面板(概念/行业分组) ──
@@ -813,8 +814,7 @@ export default function App() {
         <div className="stock-info-bar">
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, overflow: 'hidden', flexWrap: 'nowrap', whiteSpace: 'nowrap' }}>
             <span className="symbol">{currentStock.symbol}</span>
-            <span className="name">{currentStock.name}</span>
-            <MarketBadge symbol={currentStock.symbol} />
+            <span className="name">{currentStock.name}<MarketBadge symbol={currentStock.symbol} /></span>
             {kline?.mktcap ? (
               <span style={{ fontSize: 12, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
                 总市值 {(kline.mktcap / 10000).toFixed(1)}亿
@@ -1165,8 +1165,7 @@ export default function App() {
                     onClick={() => handleSelectWatchlist(item)}>
                     <span className="drag-handle">⋮⋮</span>
                     <span className="wl-sym">{item.symbol}</span>
-                    <span className="wl-name">{item.name}</span>
-                    <MarketBadge symbol={item.symbol} />
+                    <span className="wl-name">{item.name}<MarketBadge symbol={item.symbol} /></span>
                     <button className="wl-remove"
                       onClick={e => { e.stopPropagation(); handleRemoveWatchlist(item.symbol) }}>
                       ×
@@ -1213,8 +1212,7 @@ export default function App() {
                     onClick={() => handleSelectPick(p)}>
                     <div style={{ flex: 1 }}>
                       <span className="wl-sym">{p.symbol}</span>
-                      <span className="wl-name">{p.name}</span>
-                      <MarketBadge symbol={p.symbol} />
+                      <span className="wl-name">{p.name}<MarketBadge symbol={p.symbol} /></span>
                     </div>
                     <div className="pc-tags" style={{ flexShrink: 0 }}>
                       {p.strategy_id?.split(',').map((st: string) => (
@@ -1323,8 +1321,7 @@ export default function App() {
                       style={hasErr ? { opacity: 0.55 } : undefined}>
                       <div style={{ flex: 1 }}>
                         <span className="wl-sym">{s.symbol}</span>
-                        <span className="wl-name">{s.name}</span>
-                        <MarketBadge symbol={s.symbol} />
+                        <span className="wl-name">{s.name}<MarketBadge symbol={s.symbol} /></span>
                       </div>
                       <div className="pc-tags" style={{ flexShrink: 0 }}>
                         {s.strength === 'strong' && (
@@ -1402,8 +1399,7 @@ export default function App() {
                     }}>
                     <div style={{ flex: 1 }}>
                       <span className="wl-sym">{s.symbol}</span>
-                      <span className="wl-name">{s.name}</span>
-                      <MarketBadge symbol={s.symbol} />
+                      <span className="wl-name">{s.name}<MarketBadge symbol={s.symbol} /></span>
                     </div>
                     <div className="pc-tags" style={{ flexShrink: 0 }}>
                       {s.strength === 'strong' && (
@@ -1459,8 +1455,7 @@ export default function App() {
                     onClick={() => { setHighlightSignal({ date: p.date, label: 'bottom_confirm' }); loadStock(p.symbol, p.name, p.date) }}>
                     <div style={{ flex: 1 }}>
                       <span className="wl-sym">{p.symbol}</span>
-                      <span className="wl-name">{p.name}</span>
-                      <MarketBadge symbol={p.symbol} />
+                      <span className="wl-name">{p.name}<MarketBadge symbol={p.symbol} /></span>
                     </div>
                     <div className="pc-tags" style={{ flexShrink: 0 }}>
                       <span className={`pick-tag ${p.status === 'worth' ? 'premium_b' : 'ultra_shrink'}`}>
