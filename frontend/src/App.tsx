@@ -1333,6 +1333,19 @@ export default function App() {
                         {(!s.strength || s.strength === 'neutral') && (
                           <span className="pick-tag" style={{ color: '#8b949e', borderColor: '#8b949e' }}>分{s.score?.toFixed(0)}</span>
                         )}
+                        {(() => {
+                          // 高级别位置标识(观察期): L3=周下&月外(金) / L2=周下(橙) / L1=仅月外(灰) / 无=不显示
+                          const wp = s.w_pos, mp = s.m_pos
+                          if (wp !== '中枢下方' && mp !== '中枢下方' && mp !== '中枢上方') return null
+                          const label = wp === '中枢下方'
+                            ? (mp === '中枢下方' || mp === '中枢上方' ? '周↓月✦' : '周↓')
+                            : '月✦'
+                          const color = wp === '中枢下方'
+                            ? (label === '周↓' ? '#f0883e' : '#e3b341')
+                            : '#8b949e'
+                          const title = `周K${wp||'-'} / 月K${mp||'-'}(高级别中枢位置, 观察期标识)`
+                          return <span className="pick-tag" title={title} style={{ color, borderColor: color, fontWeight: 600 }}>{label}</span>
+                        })()}
                         <span className="pick-tag" style={{ color: hasErr ? '#ff4444' : (dispType.includes('买') ? '#f0883e' : '#58a6ff') }}>
                           {dispType}
                         </span>

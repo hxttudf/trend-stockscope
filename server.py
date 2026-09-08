@@ -819,7 +819,7 @@ def api_chanlun_signals():
                 "OR (a.signal_type='三卖' AND b.signal_type='二卖')) "
                 "ORDER BY a.symbol, a.signal_type", (date,)).fetchall()
         else:
-            q = "SELECT symbol, name, signal_type, signal_date, price, ref_zd, ref_zg, status, strength, strength_score, category FROM chanlun_signals WHERE signal_date=?"
+            q = "SELECT symbol, name, signal_type, signal_date, price, ref_zd, ref_zg, status, strength, strength_score, category, w_pos, m_pos FROM chanlun_signals WHERE signal_date=?"
             args = [date]
             if typ:
                 q += " AND signal_type=?"
@@ -833,7 +833,9 @@ def api_chanlun_signals():
               "status": r[7] if len(r) > 7 else "ok",
               "strength": r[8] if len(r) > 8 else "neutral",
               "score": r[9] if len(r) > 9 else 50,
-              "category": r[10] if len(r) > 10 and r[10] else ("index" if "." in r[0] else "stock")} for r in rows]
+              "category": r[10] if len(r) > 10 and r[10] else ("index" if "." in r[0] else "stock"),
+              "w_pos": r[11] if len(r) > 11 else None,
+              "m_pos": r[12] if len(r) > 12 else None} for r in rows]
     # 类别过滤: category参数优先(index/etf/stock, 用DB列); 向后兼容etf=1(按symbol前缀)
     # 默认(无category参数): 排除指数和ETF, 保持股票视图
     etf = request.args.get("etf", "0") == "1"
