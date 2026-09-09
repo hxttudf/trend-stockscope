@@ -316,7 +316,7 @@ export default function App() {
         if (cancelled) return
         const m: Record<string, WatchlistSignal> = {}
         for (const it of (d.items || [])) m[it.symbol] = it
-        setWlSignals(m)
+        setWlSignals(m)  // 轮询=全量刷新(服务端已只返回有信号的, 直接替换)
         setWlSigMode((d.mode as 'live' | 'close' | 'none') || 'none')
       }).catch(() => { /* 静默: 信号标记是增强, 失败不影响列表 */ })
     }
@@ -679,6 +679,15 @@ export default function App() {
     await addToWatchlist(currentStock.symbol, currentStock.name)
     const wl = await getWatchlist()
     setWatchlist(wl)
+    // 立即补拉当日新信号(新加入的自选马上能看到标记, 不等下个轮询周期)
+    getWatchlistSignals().then(d => {
+      setWlSignals(prev => {
+        const m: Record<string, WatchlistSignal> = { ...prev }
+        for (const it of (d.items || [])) m[it.symbol] = it
+        return m
+      })
+      setWlSigMode((d.mode as 'live' | 'close' | 'none') || 'none')
+    }).catch(() => {})
   }
 
   // Remove from watchlist
@@ -1188,12 +1197,11 @@ export default function App() {
                     <span className="wl-sym">{item.symbol}</span>
                     <span className="wl-name">{item.name}<MarketBadge symbol={item.symbol} /></span>
                     {(() => {
-                      // 当日新信号标记: 几买/几卖+分数+★/▼高级别; ◐=盘中preview未确认
+                      // 当日新信号标记 — 标签顺序/样式与缠论tab列表完全一致: 强度分数→★/▼→类型→未确认
                       const s = wlSignals[item.symbol]
                       if (!s) return null
                       const isBuy = s.type.includes('买')
                       const isSell = s.type.includes('卖')
-                      const cTag = isBuy ? '#f0883e' : (isSell ? '#58a6ff' : '#8b949e')
                       const wp = s.w_pos, mp = s.m_pos
                       let tier: string | null = null, tColor: string | null = null
                       if (isBuy) {
@@ -1201,17 +1209,28 @@ export default function App() {
                         else if (wp === '中枢下方') { tier = '★★'; tColor = '#e0a92e' }
                         else if (mp === '中枢下方' || mp === '中枢上方') { tier = '★'; tColor = '#b8860b' }
                       } else if (isSell) {
-                        if (wp === '中枢上方' && mp === '中枢上方') { tier = '▼▼▼'; tColor = '#7ec8ff' }
+                        if (mp === '中枢上方' && wp === '中枢上方') { tier = '▼▼▼'; tColor = '#7ec8ff' }
                         else if (mp === '中枢上方') { tier = '▼▼'; tColor = '#5a9ee6' }
                         else if (wp === '中枢上方') { tier = '▼'; tColor = '#3a6ea8' }
                       }
-                      const stTag = s.strength === 'strong' ? '强' : (s.strength === 'weak' ? '弱' : '')
                       return (
-                        <span className="pc-tags" style={{ flexShrink: 0, gap: 3, display: 'inline-flex', alignItems: 'center' }}>
-                          {stTag && <span style={{ fontSize: 10, color: cTag }}>{stTag}{s.score?.toFixed(0)}</span>}
-                          {!stTag && <span style={{ fontSize: 10, color: cTag }}>{s.score?.toFixed(0)}</span>}
-                          <span style={{ fontSize: 10, color: cTag, fontWeight: 600 }}>{s.type}</span>
-                          {tier && <span className="pick-tag" title={`周K:${wp || '—'} / 月K:${mp || '—'}`} style={{ color: tColor!, borderColor: tColor!, fontSize: 10 }}>{tier}</span>}
+                        <span className="pc-tags" style={{ flexShrink: 0 }}>
+                          {s.strength === 'strong' && (
+                            <span className="pick-tag" style={{ color: '#3fb950', borderColor: '#3fb950' }}>强{s.score?.toFixed(0)}</span>
+                          )}
+                          {s.strength === 'weak' && (
+                            <span className="pick-tag" style={{ color: '#f85149', borderColor: '#f85149' }}>🔴弱{s.score?.toFixed(0)}</span>
+                          )}
+                          {(!s.strength || s.strength === 'neutral') && (
+                            <span className="pick-tag" style={{ color: '#8b949e', borderColor: '#8b949e' }}>分{s.score?.toFixed(0)}</span>
+                          )}
+                          {tier && <span className="pick-tag" title={`周K${wp} / 月K${mp || '-'} (高级别中枢位置)`} style={{ color: tColor!, borderColor: tColor!, fontWeight: 700 }}>{tier}</span>}
+                          <span className="pick-tag" style={{ color: isBuy ? '#f0883e' : (isSell ? '#58a6ff' : '#8b949e') }}>
+                            {s.type}
+                          </span>
+                          {s.status === 'preview' && (
+                            <span className="pick-tag" style={{ color: '#a371f7', borderColor: '#a371f7', fontStyle: 'italic' }}>未确认</span>
+                          )}
                         </span>
                       )
                     })()}
