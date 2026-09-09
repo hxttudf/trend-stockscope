@@ -426,7 +426,131 @@ def macd_area_pref(dif):
     return lambda i1, i2: pref[max(0, i2 + 1)] - pref[max(0, i1)]
 
 
-def find_all_signals(bi, zs_list, dif, merged, max_gap=60, amp_lim=2.0):
+def calc_sell_score_v2(typ, closes, highs, lows, vols, i, ref_zd, ref_zg, dif_hist=None):
+    """卖出打分v2(独立函数, 买入打分走calc_score老路径不动; 老卖出分支保留在calc_score内可回退)
+    理论锚定(缠论): 一卖=中枢上方背驰(above_zg引力+chg60赶顶+zs_h); 二卖=反弹不创新高
+    (above_zg分段+below_zd反向惩罚); 三卖=结构主导基准+破位深度轻调
+    断点来自feat4严格as-of回测(bt_sell_score_v2.py, 17356样本): IC 老0.000→新0.090-0.165
+    只用≤i数据(无未来函数); ref_zd/ref_zg=信号行存的当时中枢锚(快照)"""
+    if i < 60:
+        return 50.0
+    c0 = closes[i]
+    if c0 <= 0:
+        return 50.0
+    L60 = min(closes[i - 60:i + 1])
+    H60 = max(closes[i - 60:i + 1])
+    ma20 = sum(closes[i - 19:i + 1]) / 20
+    chg60 = (c0 / closes[i - 60] - 1) * 100 if closes[i - 60] else 0
+    bias20 = (c0 / ma20 - 1) * 100 if ma20 else 0
+    down10 = sum(1 for k in range(i - 9, i + 1) if closes[k] < closes[k - 1]) / 10 * 100
+    # 中枢锚位置: 信号行ref_zd/ref_zg(当时最后一完结中枢快照)
+    az = bz = zh = None
+    if ref_zd and ref_zg and ref_zd > 0 and ref_zg > 0:
+        az = (c0 / ref_zg - 1) * 100 if c0 > ref_zg else 0
+        bz = (ref_zd / c0 - 1) * 100 if c0 < ref_zd else 0
+        zh = (ref_zg - ref_zd) / ref_zd * 100
+    az = az if az is not None else 0
+    bz = bz if bz is not None else 0
+    zh = zh if zh is not None else 0
+    if typ == '一卖':
+        s = 50.0 + min(max(az, 0), 60) / 60 * 20
+        if az > 60:
+            s += 5.0
+        s += min(max(chg60, 0), 100) / 100 * 10
+        s += min(zh, 50) / 50 * 5
+        if bz > 0:
+            s -= min(bz, 20) * 0.3
+    elif typ == '二卖':
+        s = 50.0
+        if az <= 5:
+            s += max(az, 0) / 5 * 6
+        elif az <= 30:
+            s += 6 + (az - 5) / 25 * 8
+        else:
+            s += 14 - min((az - 30) * 0.12, 8)
+        if bz > 0:
+            s -= min(bz, 20) * 0.35
+        if bias20 > 0:
+            s += min(bias20, 8) / 8 * 5
+        else:
+            s += max(bias20, -10) / 10 * 2
+        s += min(zh, 50) / 50 * 4
+        # 背驰度: MACD柱峰值比(≤信号日, 峰值取i-60..i-14窗口)
+        if dif_hist is not None:
+            pk = max(dif_hist[i - 60:i - 14]) if i > 60 else 0
+            if pk and pk > 0 and dif_hist[i] > 0:
+                if dif_hist[i] / pk < 0.5:
+                    s += 4
+    else:
+        s = 50.0
+        if down10 >= 30:
+            s += min(down10 - 30, 50) / 50 * 10
+        else:
+            s -= min((30 - down10) * 0.2, 6)
+        if bz > 0:
+            s -= min(bz, 15) * 0.15
+    return round(max(0.0, min(100.0, s)), 1)
+
+
+def find_sells_v2(bi, zs_list, dif, merged, max_gap=60, amp_lim=2.0):
+    """卖出判定v2(缠论趋势定义): 一卖=趋势背驰(≥2个依次抬高的不重叠中枢z2.zd>z1.zg
+    + 顶在上方中枢ZG之上 + MACD面积衰竭); 二卖=一卖后次级别顶不创新高(锚定真一卖);
+    三卖=同v1(破位反抽不回中枢, 已忠实原文)
+    返回 [(type, date, price, ref_zd, ref_zg), ...]; 一卖/二卖的锚=趋势约束的上方中枢(当时快照)"""
+    area = macd_area_pref(dif)
+    out = []
+    tops = [b for b in bi if b[1] == 'top']
+    # ── 一卖v2: 顶3连新高+面积衰竭 + 趋势约束(两中枢依次抬高) ──
+    for i in range(2, len(tops)):
+        p1, p2, p3 = tops[i-2], tops[i-1], tops[i]
+        if not (p3[2] > p2[2]):
+            continue
+        a1 = area(p1[0], p2[0])
+        a2 = area(p2[0], p3[0])
+        if not (a1 > 0 and a2 < a1 * 0.85):
+            continue
+        ok = False
+        anchor = None
+        for k in range(len(zs_list) - 1, 0, -1):
+            z2 = zs_list[k]
+            if merged[z2["bi_end"]][0] > merged[p3[0]][0]:
+                continue  # 中枢须在背驰顶之前完结
+            z1 = zs_list[k - 1]
+            if merged[z1["bi_end"]][0] > merged[p1[0]][0]:
+                continue
+            if z2["zd"] > z1["zg"] and p3[2] > z2["zg"]:
+                ok = True
+                anchor = z2
+                break
+        if ok:
+            out.append(("一卖", merged[p3[0]][0], round(p3[2], 2),
+                        round(anchor["zd"], 2), round(anchor["zg"], 2)))
+            for j in range(i + 1, len(tops)):
+                if tops[j][2] < p3[2]:
+                    if tops[j][0] - p3[0] <= max_gap:
+                        out.append(("二卖", merged[tops[j][0]][0], round(tops[j][2], 2),
+                                    round(anchor["zd"], 2), round(anchor["zg"], 2)))
+                    break
+    # ── 三卖: 同v1 ──
+    for zs in zs_list:
+        for t in tops:
+            t_idx = bi.index(t)
+            if t_idx <= zs["bi_end"]:
+                continue
+            if t_idx < 2:
+                continue
+            bottom = bi[t_idx - 1]
+            start_top = bi[t_idx - 2]
+            if bottom[2] < zs["zd"] and t[2] < zs["zd"] and start_top[2] >= zs["zd"]:
+                if t_idx - zs["bi_end"] <= max_gap and bottom[2] > zs["zd"] / amp_lim:
+                    out.append(("三卖", merged[t[0]][0], round(t[2], 2),
+                                round(zs["zd"], 2), round(zs["zg"], 2)))
+                break
+    out.sort(key=lambda x: x[1])
+    return out
+
+
+def find_all_signals(bi, zs_list, dif, merged, max_gap=60, amp_lim=2.0, sell_ver='v2'):
     """全历史买卖点检测(落DB用)
     买点: 一买(创新低+背驰) → 二买(一买后回调不创新低) → 三买(中枢突破后回抽不进)
     卖点: 对称
@@ -473,18 +597,25 @@ def find_all_signals(bi, zs_list, dif, merged, max_gap=60, amp_lim=2.0):
                     break
 
     # ── 一卖/二卖 ──
-    for i in range(2, len(tops)):
-        p1, p2, p3 = tops[i-2], tops[i-1], tops[i]
-        if p3[2] > p2[2]:
-            a1 = area(p1[0], p2[0])
-            a2 = area(p2[0], p3[0])
-            if a1 > 0 and a2 < a1 * 0.85:
-                out.append(("一卖", merged[p3[0]][0], round(p3[2], 2), 0, 0))
-                for j in range(i + 1, len(tops)):
-                    if tops[j][2] < p3[2]:
-                        if tops[j][0] - p3[0] <= max_gap:
-                            out.append(("二卖", merged[tops[j][0]][0], round(tops[j][2], 2), 0, 0))
-                        break
+    if sell_ver == 'v2':
+        # v2(缠论趋势定义): 一卖=趋势背驰(≥2个依次抬高的不重叠中枢+顶在中枢上方+面积衰竭),
+        # 二卖锚定真一卖; 三卖不动. v1候选中同日信号以v2为准(v2剔除盘整背驰误报=判定回测+1.2pct)
+        for t, d, p, zd, zg in find_sells_v2(bi, zs_list, dif, merged, max_gap, amp_lim):
+            out.append((t, d, p, zd, zg))
+    else:
+        for i in range(2, len(tops)):
+            p1, p2, p3 = tops[i-2], tops[i-1], tops[i]
+            if p3[2] > p2[2]:
+                a1 = area(p1[0], p2[0])
+                a2 = area(p2[0], p3[0])
+                if a1 > 0 and a2 < a1 * 0.85:
+                    out.append(("一卖", merged[p3[0]][0], round(p3[2], 2), 0, 0))
+                    for j in range(i + 1, len(tops)):
+                        if tops[j][2] < p3[2]:
+                            if tops[j][0] - p3[0] <= max_gap:
+                                out.append(("二卖", merged[tops[j][0]][0], round(tops[j][2], 2), 0, 0))
+                            break
+
 
     # ── 三卖: 每个中枢跌破后第一个反抽top<ZD (只查中枢之后的top) ──
     for zs in zs_list:
@@ -711,7 +842,13 @@ def analyze(symbol, window_days=7, as_of=None, light=False, include_all=False):
             continue
         try:
             di = dates_qf.index(t)
-            sc = calc_score(typ, zd, zg, closes_qf, highs_qf, lows_qf, vols_qf, di)
+            if '卖' in typ:
+                # 卖出打分v2(独立函数可回退): 用信号行的当时中枢锚(ref_zd/ref_zg快照);
+                # 一卖/二卖v2判定已带真实锚, 三卖判定自带中枢锚
+                sc = calc_sell_score_v2(typ, closes_qf, highs_qf, lows_qf, vols_qf, di, zd, zg, hist)
+            else:
+                # 买入打分: 老路径一行不动
+                sc = calc_score(typ, zd, zg, closes_qf, highs_qf, lows_qf, vols_qf, di)
             st = calc_strength(sc)
         except Exception:
             sc, st = 50.0, 'neutral'
