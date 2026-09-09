@@ -737,15 +737,15 @@ def api_chanlun_signals():
             if date in pv_dates:
                 if typ.lower() == "d3":
                     rows = conn.execute(
-                        "SELECT symbol, name, signal_type, signal_date, price, ref_zd, ref_zg, status, strength, strength_score, category FROM preview_signals "
+                        "SELECT symbol, name, signal_type, signal_date, price, ref_zd, ref_zg, status, strength, strength_score, category, w_pos, m_pos FROM preview_signals "
                         "WHERE signal_date=? AND d3=1 AND {PVC} ORDER BY symbol", (date,)).fetchall()
                 elif typ.lower() == "w30":
                     rows = conn.execute(
-                        "SELECT symbol, name, signal_type, signal_date, price, ref_zd, ref_zg, status, strength, strength_score, category FROM preview_signals "
+                        "SELECT symbol, name, signal_type, signal_date, price, ref_zd, ref_zg, status, strength, strength_score, category, w_pos, m_pos FROM preview_signals "
                         "WHERE signal_date=? AND w30=1 AND {PVC} ORDER BY symbol", (date,)).fetchall()
                 elif typ == "二三买":
                     rows = conn.execute(
-                        "SELECT a.symbol, a.name, a.signal_type, a.signal_date, a.price, a.ref_zd, a.ref_zg, a.status, a.strength, a.strength_score, a.category "
+                        "SELECT a.symbol, a.name, a.signal_type, a.signal_date, a.price, a.ref_zd, a.ref_zg, a.status, a.strength, a.strength_score, a.category, a.w_pos, a.m_pos "
                         "FROM preview_signals a JOIN preview_signals b "
                         "ON a.symbol=b.symbol AND a.batch_date=b.batch_date AND a.category=b.category "
                         "WHERE (a.batch_date, a.batch_seq) IN (SELECT batch_date, batch_seq FROM preview_signals ORDER BY batch_date DESC, batch_seq DESC LIMIT 1) AND a.signal_date=? AND {PVC} AND ((a.signal_type='二买' AND b.signal_type='三买') "
@@ -753,14 +753,14 @@ def api_chanlun_signals():
                         "ORDER BY a.symbol, a.signal_type", (date,)).fetchall()
                 elif typ == "二三卖":
                     rows = conn.execute(
-                        "SELECT a.symbol, a.name, a.signal_type, a.signal_date, a.price, a.ref_zd, a.ref_zg, a.status, a.strength, a.strength_score, a.category "
+                        "SELECT a.symbol, a.name, a.signal_type, a.signal_date, a.price, a.ref_zd, a.ref_zg, a.status, a.strength, a.strength_score, a.category, a.w_pos, a.m_pos "
                         "FROM preview_signals a JOIN preview_signals b "
                         "ON a.symbol=b.symbol AND a.batch_date=b.batch_date AND a.category=b.category "
                         "WHERE (a.batch_date, a.batch_seq) IN (SELECT batch_date, batch_seq FROM preview_signals ORDER BY batch_date DESC, batch_seq DESC LIMIT 1) AND a.signal_date=? AND {PVC} AND ((a.signal_type='二卖' AND b.signal_type='三卖') "
                         "OR (a.signal_type='三卖' AND b.signal_type='二卖')) "
                         "ORDER BY a.symbol, a.signal_type", (date,)).fetchall()
                 else:
-                    q = f"SELECT symbol, name, signal_type, signal_date, price, ref_zd, ref_zg, status, strength, strength_score, category FROM preview_signals WHERE signal_date=? AND {PVC}"
+                    q = f"SELECT symbol, name, signal_type, signal_date, price, ref_zd, ref_zg, status, strength, strength_score, category, w_pos, m_pos FROM preview_signals WHERE signal_date=? AND {PVC}"
                     args = [date]
                     if typ:
                         q += " AND signal_type=?"
