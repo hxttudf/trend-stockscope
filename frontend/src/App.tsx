@@ -1334,18 +1334,23 @@ export default function App() {
                           <span className="pick-tag" style={{ color: '#8b949e', borderColor: '#8b949e' }}>分{s.score?.toFixed(0)}</span>
                         )}
                         {(() => {
-                                                  // 高级别位置标识(买入信号): 星数+单色加深。周下&月外=★★★ / 周下=★★ / 仅月外=★; L0不出星
+                                                  // 高级别位置标识: 买入=★金系 / 卖出=▼蓝系。越强越明亮(同色系亮度区分)
+                                                  // 买入: ★★★=周下&月外(最强亮) / ★★=仅周下 / ★=仅月外(暗); 卖出: ▼▼▼=月上&周上(最强亮) / ▼▼=仅月上 / ▼=其他月/周上
                                                   const wp = s.w_pos, mp = s.m_pos
-                                                                            let label: string | null = null, color: string | null = null
-                                                                            if (wp === '中枢下方' && (mp === '中枢下方' || mp === '中枢上方')) {
-                                                                              label = '★★★'; color = '#b8860b'      // L3 最深
-                                                                            } else if (wp === '中枢下方') {
-                                                                              label = '★★'; color = '#e3b341'        // L2 中
-                                                                            } else if (mp === '中枢下方' || mp === '中枢上方') {
-                                                                              label = '★'; color = '#f2c96b'          // L1 最浅
-                                                                            }
-                                                                            if (!label || !color) return null
-                                                  const title = `周K${wp} / 月K${mp || '-'} (高等别中枢位置)`
+                                                  const isBuy = String(s.type || '').includes('买')
+                                                  const isSell = String(s.type || '').includes('卖')
+                                                  let label: string | null = null, color: string | null = null
+                                                  if (isBuy) {
+                                                    if (wp === '中枢下方' && (mp === '中枢下方' || mp === '中枢上方')) { label = '★★★'; color = '#ffd54d' }
+                                                    else if (wp === '中枢下方') { label = '★★'; color = '#e0a92e' }
+                                                    else if (mp === '中枢下方' || mp === '中枢上方') { label = '★'; color = '#b8860b' }
+                                                  } else if (isSell) {
+                                                    if (mp === '中枢上方' && wp === '中枢上方') { label = '▼▼▼'; color = '#7ec8ff' }
+                                                    else if (mp === '中枢上方') { label = '▼▼'; color = '#5a9ee6' }
+                                                    else if (wp === '中枢上方') { label = '▼'; color = '#3a6ea8' }
+                                                  }
+                                                  if (!label || !color) return null
+                                                  const title = `周K${wp} / 月K${mp || '-'} (高级别中枢位置)`
                                                   return <span className="pick-tag" title={title} style={{ color, borderColor: color, fontWeight: 700 }}>{label}</span>
                                                 })()}
                         <span className="pick-tag" style={{ color: hasErr ? '#ff4444' : (dispType.includes('买') ? '#f0883e' : '#58a6ff') }}>
