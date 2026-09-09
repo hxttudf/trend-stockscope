@@ -641,14 +641,32 @@ def api_chanlun_dates():
 _sig_cache = {}  # (date,type,preview,etf) -> (timestamp, json) 300s TTL
 
 
-def _add_ret_pct(items, buy_mode='t1'):
+def _preview_live():
+    """盘中预K线最新价 dict: symbol→close_qfq (preview_daily最新批次实时价, 供信号涨跌幅用)
+    取最新(batch_date,batch_seq)的当日实时K线; 无数据返回None(调用方回退stock_daily)"""
+    try:
+        sq = db_conn(SEQUOIA_DB)
+        rows = sq.execute(
+            "SELECT symbol, close_qfq FROM preview_daily "
+            "WHERE (batch_date, batch_seq) IN (SELECT batch_date, batch_seq FROM preview_daily "
+            "ORDER BY batch_date DESC, batch_seq DESC LIMIT 1) AND close_qfq>0").fetchall()
+        sq.close()
+        return {s: c for s, c in rows} if rows else None
+    except Exception:
+        return None
+
+
+def _add_ret_pct(items, buy_mode='t1', live_prices=None):
     """给信号列表加'信号后涨跌幅'(前复权)
     buy_mode='t1': 买入基准=信号日T+1收盘(缠论, T+1确认→次日价); 'same_day': 基准=信号日当日收盘(选股/底部确认, 当日出信号)
-    最新价: 更新日志表最新交易日一次范围查询(停牌fallback); 信号日价: 索引直查"""
+    最新价: live_prices(dict symbol→close_qfq, 盘中预K线实时价, preview模式用) 优先; 否则更新日志表最新交易日一次范围查询(停牌fallback); 信号日价: 索引直查
+    盘中动态标记: 用了live_prices时 items加 live=true (前端显示"盘中未确认"记号)"""
     try:
         seq = db_conn(SEQUOIA_DB)
         syms = list({it["symbol"] for it in items if it.get("date")})
         latest = {}
+        if live_prices:
+            latest = {s: c for s, c in live_prices.items() if c}
         if syms:
             ph = ",".join("?" * len(syms))
             ld = seq.execute("SELECT latest_date FROM kline_update_log ORDER BY id DESC LIMIT 1").fetchone()
@@ -663,7 +681,10 @@ def _add_ret_pct(items, buy_mode='t1'):
             for s, c in seq.execute(
                     "SELECT symbol, close_qfq FROM stock_daily WHERE date=? AND symbol IN (%s) AND close_qfq>0" % ph,
                     [latest_date] + syms).fetchall():
-                latest[s] = c
+                if live_prices:
+                    latest.setdefault(s, c)  # live优先: stock_daily只补缺失(停牌等无实时价)
+                else:
+                    latest[s] = c
             missing = [s for s in syms if s not in latest]
             if missing:
                 mph = ",".join("?" * len(missing))
@@ -703,6 +724,8 @@ def _add_ret_pct(items, buy_mode='t1'):
                 else sig_close.get((it.get("symbol"), it.get("date")))
             lc = latest.get(it.get("symbol"))
             it["ret_pct"] = round((lc / sc_ - 1) * 100, 1) if sc_ and lc else None
+            if live_prices:
+                it["live"] = True  # 盘中动态价, 未最终确认
         seq.close()
     except Exception:
         for it in items:
@@ -847,7 +870,7 @@ def api_chanlun_signals():
     else:
         items = [it for it in items if not (it["symbol"][:2] in ("51", "15", "16", "56", "58") or it["symbol"].startswith("5"))
                  and "." not in it["symbol"]]
-    items = _add_ret_pct(items)
+    items = _add_ret_pct(items, live_prices=(_preview_live() if preview else None))
     order = {"strong": 0, "neutral": 1, "weak": 2}
     items.sort(key=lambda x: (order.get(x["strength"], 1), -(x.get("score") or 50), x["type"], x["symbol"]))
     out = json.dumps(items, ensure_ascii=False)

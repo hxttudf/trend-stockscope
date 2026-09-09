@@ -1360,9 +1360,9 @@ export default function App() {
                           <span className="pick-tag" style={{ color: '#a371f7', borderColor: '#a371f7', fontStyle: 'italic' }}>未确认</span>
                         )}
                         {s.ret_pct != null && (
-                          <span className="pick-tag" title="信号日收盘→最新收盘"
+                          <span className="pick-tag" title={s.live ? "盘中实时价(预K线), 未最终确认" : "信号日收盘→最新收盘"}
                             style={{ color: s.ret_pct >= 0 ? '#f85149' : '#3fb950', fontWeight: 600 }}>
-                            {s.ret_pct >= 0 ? '+' : ''}{s.ret_pct}%
+                            {s.live ? '◐' : ''}{s.ret_pct >= 0 ? '+' : ''}{s.ret_pct}%
                           </span>
                         )}
                       </div>
