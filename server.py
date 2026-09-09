@@ -307,28 +307,27 @@ def get_watchlist_signals():
     ph = ",".join("?" * len(syms))
     mode = "close"
     try:
-        # 盘中: preview最新批次(今天的批次) → 该批次的signal_date(=T-1)
+        # 定稿判据: 正式表已有T-1(最新正式信号日)的ok信号 → 盘后用正式表(官方口径, 无"未确认")
+        # 未定稿(盘中/收盘批次先到而正式批未跑) → preview最新批次, status='preview'标未确认
+        # 盘中判据: preview最新批次=batch_date=今天 且 该批次signal_date > 正式表MAX(signal_date)(正式表还没算出该日)
         pv = conn.execute(
             "SELECT batch_date, MAX(batch_seq), MAX(signal_date) FROM preview_signals "
             "WHERE batch_date=(SELECT MAX(batch_date) FROM preview_signals)").fetchone()
         pv_bd, pv_seq, pv_sd = pv
-        is_live = (pv_bd == time.strftime("%Y-%m-%d"))
+        ok_sd = conn.execute("SELECT MAX(signal_date) FROM chanlun_signals WHERE status='ok'").fetchone()[0]
         rows = None
-        if is_live:
-            # 该股在该批次有 signal_date=pv_sd 的预览信号 → 盘中口径(未确认)
+        if pv_sd and pv_bd == time.strftime("%Y-%m-%d") and (not ok_sd or pv_sd > ok_sd):
+            # 正式表还没算出该信号日 → 盘中/收盘批次顶上(未确认)
             rows = conn.execute(
                 f"SELECT symbol, signal_type, strength, strength_score, price, status, w_pos, m_pos, signal_date "
                 f"FROM preview_signals WHERE batch_date=? AND batch_seq=? AND signal_date=? AND status='preview' "
                 f"AND symbol IN ({ph}) AND category!='index'",
                 [pv_bd, pv_seq, pv_sd] + syms).fetchall()
-            if not rows:
-                # 今天盘中批次还没跑到信号日(pv_sd) — 试正式表(盘后未到, 用正式最新)
-                pass
-            else:
+            if rows:
                 mode = "live"
         if not rows:
-            # 盘后口径: 正式表最新日期的ok信号
-            sd = conn.execute("SELECT MAX(signal_date) FROM chanlun_signals WHERE status='ok'").fetchone()[0]
+            # 定稿口径: 正式表最新日期的ok信号
+            sd = ok_sd
             rows = conn.execute(
                 f"SELECT symbol, signal_type, strength, strength_score, price, status, w_pos, m_pos, signal_date "
                 f"FROM chanlun_signals WHERE signal_date=? AND status='ok' AND symbol IN ({ph}) AND category!='index'",

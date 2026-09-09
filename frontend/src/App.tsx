@@ -1185,7 +1185,7 @@ export default function App() {
               ) : (
                 watchlist.map((item, idx) => (
                   <div key={item.symbol}
-                    className={`watchlist-item ${currentStock?.symbol === item.symbol ? 'active' : ''} ${dragOverIdx === idx ? 'drag-over' : ''}`}
+                    className={`watchlist-item ${currentStock?.symbol === item.symbol ? 'active' : ''} ${dragOverIdx === idx ? 'drag-over' : ''} ${wlSignals[item.symbol] ? 'with-sig' : ''}`}
                     draggable
                     onDragStart={e => handleDragStart(e, idx)}
                     onDragOver={e => handleDragOver(e, idx)}
@@ -1214,7 +1214,7 @@ export default function App() {
                         else if (wp === '中枢上方') { tier = '▼'; tColor = '#3a6ea8' }
                       }
                       return (
-                        <span className="pc-tags" style={{ flexShrink: 0 }}>
+                        <div className="wl-sig-tags pc-tags">
                           {s.strength === 'strong' && (
                             <span className="pick-tag" style={{ color: '#3fb950', borderColor: '#3fb950' }}>强{s.score?.toFixed(0)}</span>
                           )}
@@ -1231,7 +1231,7 @@ export default function App() {
                           {s.status === 'preview' && (
                             <span className="pick-tag" style={{ color: '#a371f7', borderColor: '#a371f7', fontStyle: 'italic' }}>未确认</span>
                           )}
-                        </span>
+                        </div>
                       )
                     })()}
                     <button className="wl-remove"
