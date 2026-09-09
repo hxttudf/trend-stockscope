@@ -1212,11 +1212,6 @@ export default function App() {
                           {!stTag && <span style={{ fontSize: 10, color: cTag }}>{s.score?.toFixed(0)}</span>}
                           <span style={{ fontSize: 10, color: cTag, fontWeight: 600 }}>{s.type}</span>
                           {tier && <span className="pick-tag" title={`周K:${wp || '—'} / 月K:${mp || '—'}`} style={{ color: tColor!, borderColor: tColor!, fontSize: 10 }}>{tier}</span>}
-                          {s.ret_pct != null && (
-                            <span style={{ fontSize: 10, color: s.ret_pct >= 0 ? '#f85149' : '#3fb950', fontWeight: 600 }}>
-                              {s.ret_pct >= 0 ? '+' : ''}{s.ret_pct.toFixed(1)}%{s.live ? '◐' : ''}
-                            </span>
-                          )}
                         </span>
                       )
                     })()}

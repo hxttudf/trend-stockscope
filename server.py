@@ -296,7 +296,6 @@ def get_watchlist():
     return jsonify([dict(r) for r in rows])
 
 
-@app.route("/api/watchlist", methods=["POST"])
 @app.route("/api/watchlist/signals")
 def get_watchlist_signals():
     """自选列表当日新信号: 今天算出的最新交易日(T-1)买卖信号
@@ -336,19 +335,13 @@ def get_watchlist_signals():
                 [sd] + syms).fetchall()
         items = [{"symbol": r[0], "type": r[1], "strength": r[2], "score": r[3], "price": r[4],
                   "status": r[5], "w_pos": r[6], "m_pos": r[7], "date": r[8]} for r in rows]
-        # 涨跌幅(T+1收盘买入基准, 盘中自动live价)
-        lp = None
-        if mode == "live":
-            lp = _preview_live()
-        try:
-            items = _add_ret_pct(items, buy_mode='t1', live_prices=lp)
-        except Exception:
-            pass
+        # 涨跌幅不放: T-1信号的T+1=今天, 盘中/盘后看都≈0%无信息量(用户定案)
         return jsonify({"items": items, "mode": mode, "date": (rows[0][8] if rows else "")})
     finally:
         conn.close()
 
 
+@app.route("/api/watchlist", methods=["POST"])
 def add_watchlist():
     data = request.get_json()
     symbol = data.get("symbol", "").strip()
