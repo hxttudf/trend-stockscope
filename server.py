@@ -720,7 +720,9 @@ def _add_ret_pct(items, buy_mode='t1', live_prices=None):
                         syms + [min_d] + syms).fetchall():
                     t1_price[(s, d)] = c
         for it in items:
-            sc_ = (t1_price.get((it.get("symbol"), it.get("date"))) or sig_close.get((it.get("symbol"), it.get("date")))) if buy_mode == 't1' \
+            # 买入基准=信号日T+1收盘(定稿); T+1未收盘(如昨日信号今日盘中)则无基准→不显示涨跌幅
+            # 不回退信号日当日收盘: "T+1收盘买入"口径下当日收盘不是买点, 凑数会产生无意义数字
+            sc_ = t1_price.get((it.get("symbol"), it.get("date"))) if buy_mode == 't1' \
                 else sig_close.get((it.get("symbol"), it.get("date")))
             lc = latest.get(it.get("symbol"))
             it["ret_pct"] = round((lc / sc_ - 1) * 100, 1) if sc_ and lc else None
