@@ -1235,7 +1235,7 @@ def api_board_signals():
             pv_seq = conn.execute(
                 "SELECT MAX(batch_seq) FROM preview_signals WHERE batch_date=?", (pv_max,)).fetchone()[0]
             items = conn.execute(
-                f"SELECT symbol, name, signal_type, strength, strength_score, price, status "
+                f"SELECT symbol, name, signal_type, strength, strength_score, price, status, w_pos, m_pos "
                 f"FROM preview_signals WHERE batch_date=? AND batch_seq=? AND signal_date=? AND status='preview' "
                 f"AND symbol IN ({ph}) AND category!='index' ORDER BY "
                 f"CASE signal_type WHEN '一买' THEN 1 WHEN '二买' THEN 2 WHEN '三买' THEN 3 "
@@ -1243,7 +1243,7 @@ def api_board_signals():
                 [pv_max, pv_seq, date] + members).fetchall()
         else:
             items = conn.execute(
-                f"SELECT symbol, name, signal_type, strength, strength_score, price, status "
+                f"SELECT symbol, name, signal_type, strength, strength_score, price, status, w_pos, m_pos "
                 f"FROM chanlun_signals WHERE signal_date=? AND status='ok' "
                 f"AND symbol IN ({ph}) AND category!='index' ORDER BY "
                 f"CASE signal_type WHEN '一买' THEN 1 WHEN '二买' THEN 2 WHEN '三买' THEN 3 "
@@ -1255,7 +1255,8 @@ def api_board_signals():
             sym = r[0]
             if sym not in merged:
                 merged[sym] = {"symbol": r[0], "name": r[1], "type": r[2], "strength": r[3],
-                               "score": r[4], "price": r[5], "status": r[6], "date": date, "types": [r[2]]}
+                               "score": r[4], "price": r[5], "status": r[6], "date": date, "types": [r[2]],
+                               "w_pos": r[7], "m_pos": r[8]}
             else:
                 # 类型去重(盘中多批次重复)+(二买+三买合并)
                 if r[2] not in merged[sym]["types"]:
@@ -1268,6 +1269,11 @@ def api_board_signals():
                 prio = {'strong': 0, 'neutral': 1, 'weak': 2}
                 if prio.get(r[3], 1) < prio.get(merged[sym]["strength"], 1):
                     merged[sym]["strength"] = r[3]
+                # 位置取更强(卖出=上方更强取更靠上; 买入=下方更强取更靠下) — 简化: 非空即用首条
+                if merged[sym].get("w_pos") is None and r[7] is not None:
+                    merged[sym]["w_pos"] = r[7]
+                if merged[sym].get("m_pos") is None and r[8] is not None:
+                    merged[sym]["m_pos"] = r[8]
         out = list(merged.values())
         # 距今涨跌幅(信号日T+1收盘→最新收盘, 与缠论tab同口径)
         out = _add_ret_pct(out, buy_mode='t1')

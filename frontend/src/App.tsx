@@ -1434,6 +1434,25 @@ export default function App() {
                       <span className="pick-tag" style={{ color: s.type.includes('买') ? '#f0883e' : '#58a6ff' }}>
                         {s.type}
                       </span>
+                      {(() => {
+                        // 高级别位置标识(与缠论tab同规则): 买=★金系 / 卖=▼蓝系, 越强越明亮
+                        const wp = s.w_pos, mp = s.m_pos
+                        const isBuy = String(s.type || '').includes('买')
+                        const isSell = String(s.type || '').includes('卖')
+                        let label: string | null = null, color: string | null = null
+                        if (isBuy) {
+                          if (wp === '中枢下方' && (mp === '中枢下方' || mp === '中枢上方')) { label = '★★★'; color = '#ffd54d' }
+                          else if (wp === '中枢下方') { label = '★★'; color = '#e0a92e' }
+                          else if (mp === '中枢下方' || mp === '中枢上方') { label = '★'; color = '#b8860b' }
+                        } else if (isSell) {
+                          if (wp === '中枢上方' && mp === '中枢上方') { label = '▼▼▼'; color = '#7ec8ff' }
+                          else if (mp === '中枢上方') { label = '▼▼'; color = '#5a9ee6' }
+                          else if (wp === '中枢上方') { label = '▼'; color = '#3a6ea8' }
+                        }
+                        if (!label || !color) return null
+                        const title = `${isBuy ? '买入' : '卖出'}·周K:${wp || '—'} / 月K:${mp || '—'}`
+                        return <span className="pick-tag" title={title} style={{ color, borderColor: color }}>{label}</span>
+                      })()}
                       {s.ret_pct != null && (
                         <span className="pick-tag" title="信号日收盘→最新收盘"
                           style={{ color: s.ret_pct >= 0 ? '#f85149' : '#3fb950', fontWeight: 600 }}>
