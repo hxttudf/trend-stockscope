@@ -223,7 +223,7 @@ body {
 
 /* ── Watchlist Sidebar ──────────────────────────────────── */
 .watchlist-panel {
-  width: 260px;
+  width: 300px;
   background: var(--bg-secondary);
   border-left: 1px solid var(--border);
   display: flex;
@@ -360,19 +360,18 @@ body {
   flex: 1;
 }
 
-/* 自选行带信号标记: 两行布局(上行=代码+名称, 下行=信号tags), 名称不被压缩 */
-.watchlist-item.with-sig {
-  flex-wrap: wrap;
-}
+/* 自选行带信号标记: 单行排全(面板加宽到300px), 名称保底6字不省略 */
 .watchlist-item.with-sig .wl-name {
-  min-width: 4.5em;   /* 4字名不省略; 更长名称仍可省略但优先于tags挤压 */
+  min-width: 6em;
   flex-shrink: 0;
   flex-grow: 1;
 }
 .watchlist-item .wl-sig-tags {
-  flex-basis: 100%;
-  padding-left: 74px;  /* 与wl-sym(70px)+gap对齐, tags起始列与名称对齐 */
-  margin-top: 2px;
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .watchlist-item .wl-remove {
