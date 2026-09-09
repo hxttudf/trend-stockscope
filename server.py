@@ -643,13 +643,20 @@ _sig_cache = {}  # (date,type,preview,etf) -> (timestamp, json) 300s TTL
 
 def _preview_live():
     """盘中预K线最新价 dict: symbol→close_qfq (preview_daily最新批次实时价, 供信号涨跌幅用)
-    取最新(batch_date,batch_seq)的当日实时K线; 无数据返回None(调用方回退stock_daily)"""
+    守卫: 仅当最新批次=今天 且 正式日K还没写入今天(官方收盘未定稿)才返回, 否则None(用收盘价)
+    这样盘后update_daily落库后自动切回官方收盘价, 不会拿14:35旧快照冒充收盘"""
     try:
         sq = db_conn(SEQUOIA_DB)
+        today = time.strftime('%Y-%m-%d')
+        r = sq.execute("SELECT latest_date FROM kline_update_log ORDER BY id DESC LIMIT 1").fetchone()
+        if r and r[0] >= today:
+            sq.close()
+            return None  # 官方今天收盘已落库
         rows = sq.execute(
             "SELECT symbol, close_qfq FROM preview_daily "
             "WHERE (batch_date, batch_seq) IN (SELECT batch_date, batch_seq FROM preview_daily "
-            "ORDER BY batch_date DESC, batch_seq DESC LIMIT 1) AND close_qfq>0").fetchall()
+            "ORDER BY batch_date DESC, batch_seq DESC LIMIT 1) AND close_qfq>0 AND batch_date=?",
+            (today,)).fetchall()
         sq.close()
         return {s: c for s, c in rows} if rows else None
     except Exception:
@@ -872,7 +879,7 @@ def api_chanlun_signals():
     else:
         items = [it for it in items if not (it["symbol"][:2] in ("51", "15", "16", "56", "58") or it["symbol"].startswith("5"))
                  and "." not in it["symbol"]]
-    items = _add_ret_pct(items, live_prices=(_preview_live() if preview else None))
+    items = _add_ret_pct(items, live_prices=_preview_live())
     order = {"strong": 0, "neutral": 1, "weak": 2}
     items.sort(key=lambda x: (order.get(x["strength"], 1), -(x.get("score") or 50), x["type"], x["symbol"]))
     out = json.dumps(items, ensure_ascii=False)
