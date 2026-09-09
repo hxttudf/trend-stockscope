@@ -130,6 +130,25 @@ export async function getWatchlist(): Promise<WatchlistItem[]> {
   return res.json()
 }
 
+export interface WatchlistSignal {
+  symbol: string
+  type: string
+  strength: string
+  score: number
+  price: number
+  status: string
+  w_pos: string | null
+  m_pos: string | null
+  date: string
+  ret_pct?: number | null
+  live?: boolean
+}
+
+export async function getWatchlistSignals(): Promise<{ items: WatchlistSignal[]; mode: string; date: string }> {
+  const res = await fetch(`${API_BASE}/watchlist/signals`)
+  return res.json()
+}
+
 export async function addToWatchlist(symbol: string, name: string): Promise<WatchlistItem> {
   const res = await fetch(`${API_BASE}/watchlist`, {
     method: 'POST',

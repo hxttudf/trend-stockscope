@@ -5,6 +5,7 @@ import {
   searchStocks, getKline, getStockInfo, getPicks, getPickDates,
   getLaogaoPicks, getLaogaoDates,
   getWatchlist, addToWatchlist, removeFromWatchlist, updateWatchlistNote, reorderWatchlist,
+  getWatchlistSignals, WatchlistSignal,
 } from './utils/api'
 
 const RANGES = [
@@ -202,6 +203,9 @@ export default function App() {
 
 
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>([])
+  // 自选当日新信号(T-1信号, 盘中preview/盘后正式自动切换): symbol→signal
+  const [wlSignals, setWlSignals] = useState<Record<string, WatchlistSignal>>({})
+  const [wlSigMode, setWlSigMode] = useState<'live' | 'close' | 'none'>('none')
   const [picks, setPicks] = useState<PickRecord[]>([])
   const [pickDates, setPickDates] = useState<{ date: string; total: number }[]>([])
   const [selectedPickDate, setSelectedPickDate] = useState('')
@@ -302,6 +306,23 @@ export default function App() {
   // Load watchlist and pick dates on mount
   useEffect(() => {
     getWatchlist().then(setWatchlist)
+  }, [])
+
+  // 自选当日新信号: mount加载 + 盘中每5分钟轮询(live↔close自动切换由服务端口径决定)
+  useEffect(() => {
+    let cancelled = false
+    const load = () => {
+      getWatchlistSignals().then(d => {
+        if (cancelled) return
+        const m: Record<string, WatchlistSignal> = {}
+        for (const it of (d.items || [])) m[it.symbol] = it
+        setWlSignals(m)
+        setWlSigMode((d.mode as 'live' | 'close' | 'none') || 'none')
+      }).catch(() => { /* 静默: 信号标记是增强, 失败不影响列表 */ })
+    }
+    load()
+    const t = setInterval(load, 5 * 60 * 1000)
+    return () => { cancelled = true; clearInterval(t) }
   }, [])
 
   // Load pick dates (filtered by strategy)
@@ -1166,6 +1187,39 @@ export default function App() {
                     <span className="drag-handle">⋮⋮</span>
                     <span className="wl-sym">{item.symbol}</span>
                     <span className="wl-name">{item.name}<MarketBadge symbol={item.symbol} /></span>
+                    {(() => {
+                      // 当日新信号标记: 几买/几卖+分数+★/▼高级别; ◐=盘中preview未确认
+                      const s = wlSignals[item.symbol]
+                      if (!s) return null
+                      const isBuy = s.type.includes('买')
+                      const isSell = s.type.includes('卖')
+                      const cTag = isBuy ? '#f0883e' : (isSell ? '#58a6ff' : '#8b949e')
+                      const wp = s.w_pos, mp = s.m_pos
+                      let tier: string | null = null, tColor: string | null = null
+                      if (isBuy) {
+                        if (wp === '中枢下方' && (mp === '中枢下方' || mp === '中枢上方')) { tier = '★★★'; tColor = '#ffd54d' }
+                        else if (wp === '中枢下方') { tier = '★★'; tColor = '#e0a92e' }
+                        else if (mp === '中枢下方' || mp === '中枢上方') { tier = '★'; tColor = '#b8860b' }
+                      } else if (isSell) {
+                        if (wp === '中枢上方' && mp === '中枢上方') { tier = '▼▼▼'; tColor = '#7ec8ff' }
+                        else if (mp === '中枢上方') { tier = '▼▼'; tColor = '#5a9ee6' }
+                        else if (wp === '中枢上方') { tier = '▼'; tColor = '#3a6ea8' }
+                      }
+                      const stTag = s.strength === 'strong' ? '强' : (s.strength === 'weak' ? '弱' : '')
+                      return (
+                        <span className="pc-tags" style={{ flexShrink: 0, gap: 3, display: 'inline-flex', alignItems: 'center' }}>
+                          {stTag && <span style={{ fontSize: 10, color: cTag }}>{stTag}{s.score?.toFixed(0)}</span>}
+                          {!stTag && <span style={{ fontSize: 10, color: cTag }}>{s.score?.toFixed(0)}</span>}
+                          <span style={{ fontSize: 10, color: cTag, fontWeight: 600 }}>{s.type}</span>
+                          {tier && <span className="pick-tag" title={`周K:${wp || '—'} / 月K:${mp || '—'}`} style={{ color: tColor!, borderColor: tColor!, fontSize: 10 }}>{tier}</span>}
+                          {s.ret_pct != null && (
+                            <span style={{ fontSize: 10, color: s.ret_pct >= 0 ? '#f85149' : '#3fb950', fontWeight: 600 }}>
+                              {s.ret_pct >= 0 ? '+' : ''}{s.ret_pct.toFixed(1)}%{s.live ? '◐' : ''}
+                            </span>
+                          )}
+                        </span>
+                      )
+                    })()}
                     <button className="wl-remove"
                       onClick={e => { e.stopPropagation(); handleRemoveWatchlist(item.symbol) }}>
                       ×

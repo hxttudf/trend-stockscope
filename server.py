@@ -297,6 +297,58 @@ def get_watchlist():
 
 
 @app.route("/api/watchlist", methods=["POST"])
+@app.route("/api/watchlist/signals")
+def get_watchlist_signals():
+    """自选列表当日新信号: 今天算出的最新交易日(T-1)买卖信号
+    盘中=preview最新批次(未确认); 盘后=正式表status='ok'. 返回类型/强度/分数/高级别位置/涨跌幅"""
+    conn = db_conn(TREND_DB)
+    syms = [r[0] for r in db_conn(SCOPE_DB).execute("SELECT symbol FROM watchlist").fetchall()]
+    if not syms:
+        return jsonify({"items": [], "mode": "none"})
+    ph = ",".join("?" * len(syms))
+    mode = "close"
+    try:
+        # 盘中: preview最新批次(今天的批次) → 该批次的signal_date(=T-1)
+        pv = conn.execute(
+            "SELECT batch_date, MAX(batch_seq), MAX(signal_date) FROM preview_signals "
+            "WHERE batch_date=(SELECT MAX(batch_date) FROM preview_signals)").fetchone()
+        pv_bd, pv_seq, pv_sd = pv
+        is_live = (pv_bd == time.strftime("%Y-%m-%d"))
+        rows = None
+        if is_live:
+            # 该股在该批次有 signal_date=pv_sd 的预览信号 → 盘中口径(未确认)
+            rows = conn.execute(
+                f"SELECT symbol, signal_type, strength, strength_score, price, status, w_pos, m_pos, signal_date "
+                f"FROM preview_signals WHERE batch_date=? AND batch_seq=? AND signal_date=? AND status='preview' "
+                f"AND symbol IN ({ph}) AND category!='index'",
+                [pv_bd, pv_seq, pv_sd] + syms).fetchall()
+            if not rows:
+                # 今天盘中批次还没跑到信号日(pv_sd) — 试正式表(盘后未到, 用正式最新)
+                pass
+            else:
+                mode = "live"
+        if not rows:
+            # 盘后口径: 正式表最新日期的ok信号
+            sd = conn.execute("SELECT MAX(signal_date) FROM chanlun_signals WHERE status='ok'").fetchone()[0]
+            rows = conn.execute(
+                f"SELECT symbol, signal_type, strength, strength_score, price, status, w_pos, m_pos, signal_date "
+                f"FROM chanlun_signals WHERE signal_date=? AND status='ok' AND symbol IN ({ph}) AND category!='index'",
+                [sd] + syms).fetchall()
+        items = [{"symbol": r[0], "type": r[1], "strength": r[2], "score": r[3], "price": r[4],
+                  "status": r[5], "w_pos": r[6], "m_pos": r[7], "date": r[8]} for r in rows]
+        # 涨跌幅(T+1收盘买入基准, 盘中自动live价)
+        lp = None
+        if mode == "live":
+            lp = _preview_live()
+        try:
+            items = _add_ret_pct(items, buy_mode='t1', live_prices=lp)
+        except Exception:
+            pass
+        return jsonify({"items": items, "mode": mode, "date": (rows[0][8] if rows else "")})
+    finally:
+        conn.close()
+
+
 def add_watchlist():
     data = request.get_json()
     symbol = data.get("symbol", "").strip()
