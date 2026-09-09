@@ -1334,11 +1334,11 @@ export default function App() {
                           <span className="pick-tag" style={{ color: '#8b949e', borderColor: '#8b949e' }}>分{s.score?.toFixed(0)}</span>
                         )}
                         {(() => {
-                          // 高级别位置标识: ▼▼(金)=周线中枢下方&月线中枢外 / ▼(橙)=仅周线中枢下方 / 其余不显示
+                          // 高级别位置标识: ★(金#e3b341)=周线中枢下方&月线中枢外 / ★(橙#f0883e)=仅周线中枢下方 / 其余不显示
                           const wp = s.w_pos, mp = s.m_pos
                           if (wp !== '中枢下方') return null
                           const deep = mp === '中枢下方' || mp === '中枢上方'
-                          const label = deep ? '▼▼' : '▼'
+                          const label = '★'
                           const color = deep ? '#e3b341' : '#f0883e'
                           const title = `周K${wp} / 月K${mp || '-'} (高级别中枢位置)`
                           return <span className="pick-tag" title={title} style={{ color, borderColor: color, fontWeight: 700 }}>{label}</span>
