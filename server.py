@@ -298,44 +298,66 @@ def get_watchlist():
 
 @app.route("/api/watchlist/signals")
 def get_watchlist_signals():
-    """自选列表当日新信号: 今天算出的最新交易日(T-1)买卖信号
-    盘中=preview最新批次(未确认); 盘后=正式表status='ok'. 返回类型/强度/分数/高级别位置/涨跌幅"""
+    """自选列表当日新信号: 盘中优先高频表(watchlist_intraday, 15min重算), 否则 preview/正式
+    返回 {items:[信号], alerts:[即将触发], mode: live|close|none, source: hf|preview|formal}"""
+    import datetime as _dt
     conn = db_conn(TREND_DB)
     syms = [r[0] for r in db_conn(SCOPE_DB).execute("SELECT symbol FROM watchlist").fetchall()]
     if not syms:
-        return jsonify({"items": [], "mode": "none"})
+        return jsonify({"items": [], "alerts": [], "mode": "none", "source": "none"})
     ph = ",".join("?" * len(syms))
-    mode = "close"
+    today = time.strftime("%Y-%m-%d")
     try:
-        # 定稿判据: 正式表已有T-1(最新正式信号日)的ok信号 → 盘后用正式表(官方口径, 无"未确认")
-        # 未定稿(盘中/收盘批次先到而正式批未跑) → preview最新批次, status='preview'标未确认
-        # 盘中判据: preview最新批次=batch_date=今天 且 该批次signal_date > 正式表MAX(signal_date)(正式表还没算出该日)
+        # ① 高频表优先(盘中): 今日有重算 且 updated_at 在 35 分钟内
+        hf_latest = conn.execute(
+            "SELECT MAX(updated_at) FROM watchlist_intraday WHERE trade_date=?", (today,)).fetchone()[0]
+        hf_fresh = False
+        if hf_latest:
+            try:
+                hf_fresh = (_dt.datetime.now()
+                            - _dt.datetime.strptime(hf_latest, "%Y-%m-%d %H:%M:%S")).total_seconds() < 35 * 60
+            except Exception:
+                hf_fresh = False
+        if hf_fresh:
+            srows = conn.execute(
+                f"SELECT symbol, signal_type, strength, strength_score, price, w_pos, m_pos, signal_date, inv_level, inv_text "
+                f"FROM watchlist_intraday WHERE trade_date=? AND stage='signal' AND symbol IN ({ph})",
+                [today] + syms).fetchall()
+            arows = conn.execute(
+                f"SELECT symbol, signal_type, cond_level, cond_text, price "
+                f"FROM watchlist_intraday WHERE trade_date=? AND stage='alert' AND symbol IN ({ph})",
+                [today] + syms).fetchall()
+            items = [{"symbol": r[0], "type": r[1], "strength": r[2], "score": r[3], "price": r[4],
+                      "status": "preview", "w_pos": r[5], "m_pos": r[6], "date": r[7],
+                      "invLevel": r[8], "invText": r[9]} for r in srows]
+            alerts = [{"symbol": r[0], "type": r[1], "level": r[2], "text": r[3], "price": r[4]} for r in arows]
+            return jsonify({"items": items, "alerts": alerts, "mode": "live", "source": "hf",
+                            "date": (srows[0][7] if srows else "")})
+        # ② 回退: preview最新批次(盘中未定稿) / 正式表(定稿)
+        mode, source = "close", "formal"
         pv = conn.execute(
             "SELECT batch_date, MAX(batch_seq), MAX(signal_date) FROM preview_signals "
             "WHERE batch_date=(SELECT MAX(batch_date) FROM preview_signals)").fetchone()
         pv_bd, pv_seq, pv_sd = pv
         ok_sd = conn.execute("SELECT MAX(signal_date) FROM chanlun_signals WHERE status='ok'").fetchone()[0]
         rows = None
-        if pv_sd and pv_bd == time.strftime("%Y-%m-%d") and (not ok_sd or pv_sd > ok_sd):
-            # 正式表还没算出该信号日 → 盘中/收盘批次顶上(未确认)
+        if pv_sd and pv_bd == today and (not ok_sd or pv_sd > ok_sd):
             rows = conn.execute(
                 f"SELECT symbol, signal_type, strength, strength_score, price, status, w_pos, m_pos, signal_date "
                 f"FROM preview_signals WHERE batch_date=? AND batch_seq=? AND signal_date=? AND status='preview' "
                 f"AND symbol IN ({ph}) AND category!='index'",
                 [pv_bd, pv_seq, pv_sd] + syms).fetchall()
             if rows:
-                mode = "live"
+                mode, source = "live", "preview"
         if not rows:
-            # 定稿口径: 正式表最新日期的ok信号
-            sd = ok_sd
             rows = conn.execute(
                 f"SELECT symbol, signal_type, strength, strength_score, price, status, w_pos, m_pos, signal_date "
                 f"FROM chanlun_signals WHERE signal_date=? AND status='ok' AND symbol IN ({ph}) AND category!='index'",
-                [sd] + syms).fetchall()
+                [ok_sd] + syms).fetchall()
         items = [{"symbol": r[0], "type": r[1], "strength": r[2], "score": r[3], "price": r[4],
                   "status": r[5], "w_pos": r[6], "m_pos": r[7], "date": r[8]} for r in rows]
-        # 涨跌幅不放: T-1信号的T+1=今天, 盘中/盘后看都≈0%无信息量(用户定案)
-        return jsonify({"items": items, "mode": mode, "date": (rows[0][8] if rows else "")})
+        return jsonify({"items": items, "alerts": [], "mode": mode, "source": source,
+                        "date": (rows[0][8] if rows else "")})
     finally:
         conn.close()
 

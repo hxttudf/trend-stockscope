@@ -5,7 +5,7 @@ import {
   searchStocks, getKline, getStockInfo, getPicks, getPickDates,
   getLaogaoPicks, getLaogaoDates,
   getWatchlist, addToWatchlist, removeFromWatchlist, updateWatchlistNote, reorderWatchlist,
-  getWatchlistSignals, WatchlistSignal,
+  getWatchlistSignals, WatchlistSignal, WatchlistAlert,
 } from './utils/api'
 
 const RANGES = [
@@ -205,6 +205,8 @@ export default function App() {
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>([])
   // 自选当日新信号(T-1信号, 盘中preview/盘后正式自动切换): symbol→signal
   const [wlSignals, setWlSignals] = useState<Record<string, WatchlistSignal>>({})
+  // 自选"即将触发"预警(高频, 无信号时的候选): symbol→alert
+  const [wlAlerts, setWlAlerts] = useState<Record<string, WatchlistAlert>>({})
   const [wlSigMode, setWlSigMode] = useState<'live' | 'close' | 'none'>('none')
   const [picks, setPicks] = useState<PickRecord[]>([])
   const [pickDates, setPickDates] = useState<{ date: string; total: number }[]>([])
@@ -317,6 +319,9 @@ export default function App() {
         const m: Record<string, WatchlistSignal> = {}
         for (const it of (d.items || [])) m[it.symbol] = it
         setWlSignals(m)  // 轮询=全量刷新(服务端已只返回有信号的, 直接替换)
+        const a: Record<string, WatchlistAlert> = {}
+        for (const al of (d.alerts || [])) a[al.symbol] = al
+        setWlAlerts(a)
         setWlSigMode((d.mode as 'live' | 'close' | 'none') || 'none')
       }).catch(() => { /* 静默: 信号标记是增强, 失败不影响列表 */ })
     }
@@ -685,6 +690,11 @@ export default function App() {
         const m: Record<string, WatchlistSignal> = { ...prev }
         for (const it of (d.items || [])) m[it.symbol] = it
         return m
+      })
+      setWlAlerts(prev => {
+        const a: Record<string, WatchlistAlert> = { ...prev }
+        for (const al of (d.alerts || [])) a[al.symbol] = al
+        return a
       })
       setWlSigMode((d.mode as 'live' | 'close' | 'none') || 'none')
     }).catch(() => {})
@@ -1185,7 +1195,8 @@ export default function App() {
               ) : (
                 watchlist.map((item, idx) => (
                   <div key={item.symbol}
-                    className={`watchlist-item ${currentStock?.symbol === item.symbol ? 'active' : ''} ${dragOverIdx === idx ? 'drag-over' : ''} ${wlSignals[item.symbol] ? 'with-sig' : ''}`}
+                    className={`watchlist-item ${currentStock?.symbol === item.symbol ? 'active' : ''} ${dragOverIdx === idx ? 'drag-over' : ''} ${(wlSignals[item.symbol] || wlAlerts[item.symbol]) ? 'with-sig' : ''}`}
+                    title={(wlSignals[item.symbol] && wlSignals[item.symbol]!.invText) || (wlAlerts[item.symbol] && wlAlerts[item.symbol]!.text) || undefined}
                     draggable
                     onDragStart={e => handleDragStart(e, idx)}
                     onDragOver={e => handleDragOver(e, idx)}
@@ -1234,6 +1245,13 @@ export default function App() {
                         </div>
                       )
                     })()}
+                    {wlAlerts[item.symbol] && (
+                      <span
+                        className={`wl-alert-tag${wlSignals[item.symbol] ? ' compact' : ''}`}
+                        title={wlAlerts[item.symbol]!.text}>
+                        ≈{wlAlerts[item.symbol]!.type}{wlSignals[item.symbol] ? '' : ` ${wlAlerts[item.symbol]!.level ?? ''}`}
+                      </span>
+                    )}
                     <button className="wl-remove"
                       onClick={e => { e.stopPropagation(); handleRemoveWatchlist(item.symbol) }}>
                       ×

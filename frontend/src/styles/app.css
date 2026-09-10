@@ -381,6 +381,17 @@ body {
   padding: 0 2px;
   line-height: 1.5;
 }
+/* "即将触发"预警标签: 虚线灰框, 一眼区别于实心正式信号 */
+.watchlist-item .wl-alert-tag {
+  flex-shrink: 0;
+  white-space: nowrap;
+  font-size: 9px;
+  line-height: 1.5;
+  color: #8b949e;
+  border: 1px dashed #6e7681;
+  border-radius: 3px;
+  padding: 0 3px;
+}
 
 .watchlist-item .wl-remove {
   position: absolute;

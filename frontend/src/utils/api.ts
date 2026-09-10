@@ -140,11 +140,21 @@ export interface WatchlistSignal {
   w_pos: string | null
   m_pos: string | null
   date: string
+  invLevel?: number | null
+  invText?: string | null
   ret_pct?: number | null
   live?: boolean
 }
 
-export async function getWatchlistSignals(): Promise<{ items: WatchlistSignal[]; mode: string; date: string }> {
+export interface WatchlistAlert {
+  symbol: string
+  type: string
+  level: number | null
+  text: string
+  price: number | null
+}
+
+export async function getWatchlistSignals(): Promise<{ items: WatchlistSignal[]; alerts?: WatchlistAlert[]; mode: string; source?: string; date: string }> {
   const res = await fetch(`${API_BASE}/watchlist/signals`)
   return res.json()
 }
