@@ -307,7 +307,7 @@ def get_watchlist_signals():
         return jsonify({"items": [], "alerts": [], "mode": "none", "source": "none"})
     ph = ",".join("?" * len(syms))
     today = time.strftime("%Y-%m-%d")
-    # "当天计算出的"参照日 = 全市场最新信号日 ok_sd; 用 confirmed_date 判(滚动 as-of, 无未来函数)
+    # "当天计算出的"参照: ① 信号日=全市场最新信号日 ok_sd; ② 今天才算出来的更老信号(confirmed_date=今天)
     # 注意: 参照用 MAX(signal_date) 而非 MAX(confirmed_date) — 后者含个别回填残留(跨年 confirmed_date)
     ok_sd = conn.execute(
         "SELECT MAX(signal_date) FROM chanlun_signals WHERE status='ok' AND category!='index'").fetchone()[0]
@@ -344,8 +344,9 @@ def get_watchlist_signals():
                 mph = ",".join("?" * len(miss))
                 frows = conn.execute(
                     f"SELECT symbol, signal_type, strength, strength_score, price, w_pos, m_pos, signal_date "
-                    f"FROM chanlun_signals WHERE status='ok' AND category!='index' AND confirmed_date=? AND symbol IN ({mph})",
-                    [ok_sd] + miss).fetchall()
+                    f"FROM chanlun_signals WHERE status='ok' AND category!='index' "
+                    f"AND (signal_date=? OR (confirmed_date=? AND signal_date<?)) AND symbol IN ({mph})",
+                    [ok_sd, today, ok_sd] + miss).fetchall()
                 items += [{"symbol": f[0], "type": f[1], "strength": f[2], "score": f[3], "price": f[4],
                            "status": "ok", "w_pos": f[5], "m_pos": f[6], "date": f[7]} for f in frows]
             return jsonify({"items": items, "alerts": alerts, "mode": "live", "source": "hf",
@@ -367,11 +368,13 @@ def get_watchlist_signals():
             if rows:
                 mode, source = "live", "preview"
         if not rows:
-            # 当天计算出的正式信号: 确认日=最新确认日(ok_sd); 天然含"延后/事后"(confirmed_later=1)
+            # 当天展示的正式信号: ① 信号日=最新信号日(ok_sd) ← 今天这轮的产出
+            #   ② 或 今天才算出来的更老信号(confirmed_date=今天 且 signal_date<ok_sd = "延后计算")
             rows = conn.execute(
                 f"SELECT symbol, signal_type, strength, strength_score, price, status, w_pos, m_pos, signal_date "
-                f"FROM chanlun_signals WHERE confirmed_date=? AND status='ok' AND symbol IN ({ph}) AND category!='index'",
-                [ok_sd] + syms).fetchall()
+                f"FROM chanlun_signals WHERE status='ok' AND category!='index' "
+                f"AND (signal_date=? OR (confirmed_date=? AND signal_date<?)) AND symbol IN ({ph})",
+                [ok_sd, today, ok_sd] + syms).fetchall()
         items = [{"symbol": r[0], "type": r[1], "strength": r[2], "score": r[3], "price": r[4],
                   "status": r[5], "w_pos": r[6], "m_pos": r[7], "date": r[8]} for r in rows]
         return jsonify({"items": items, "alerts": [], "mode": mode, "source": source,
