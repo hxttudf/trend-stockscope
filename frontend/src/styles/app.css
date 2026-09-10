@@ -393,6 +393,38 @@ body {
   padding: 0 3px;
 }
 
+/* 自选行悬停卡片(结构化) */
+.wl-tip {
+  position: fixed;
+  z-index: 3000;
+  width: max-content;
+  max-width: 280px;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 9px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55);
+  padding: 10px 12px;
+  font-size: 12px;
+  color: #c9d1d9;
+  line-height: 1.55;
+  pointer-events: none;
+  animation: wlTipIn 0.1s ease-out;
+}
+@keyframes wlTipIn { from { opacity: 0; transform: translateX(4px); } to { opacity: 1; } }
+.wl-tip-h { display: flex; align-items: center; gap: 6px; margin-bottom: 7px; }
+.wl-tip-type { padding: 1px 8px; border-radius: 5px; font-size: 12px; font-weight: 700; }
+.wl-tip-type.buy { color: #f0883e; background: rgba(240, 136, 62, 0.15); }
+.wl-tip-type.sell { color: #58a6ff; background: rgba(88, 166, 255, 0.15); }
+.wl-tip-score { color: #e6edf3; font-weight: 700; font-size: 13px; }
+.wl-tip-str { font-size: 10px; padding: 0 5px; border-radius: 4px; font-weight: 600; }
+.wl-tip-str.strong { color: #3fb950; border: 1px solid #3fb950; }
+.wl-tip-str.weak { color: #f85149; border: 1px solid #f85149; }
+.wl-tip-str.pv { color: #a371f7; border: 1px dashed #a371f7; }
+.wl-tip-badge { font-size: 10px; color: #d29922; border: 1px dashed #d29922; border-radius: 4px; padding: 1px 6px; font-weight: 600; }
+.wl-tip-row { display: flex; gap: 7px; margin-top: 4px; }
+.wl-tip-k { color: #8b949e; flex-shrink: 0; }
+.wl-tip-v { color: #e6edf3; }
+
 .watchlist-item .wl-remove {
   position: absolute;
   right: 2px;

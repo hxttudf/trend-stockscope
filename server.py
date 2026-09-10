@@ -319,14 +319,16 @@ def get_watchlist_signals():
             except Exception:
                 hf_fresh = False
         if hf_fresh:
+            last_seq = conn.execute(
+                "SELECT MAX(seq) FROM watchlist_intraday WHERE trade_date=?", (today,)).fetchone()[0]
             srows = conn.execute(
                 f"SELECT symbol, signal_type, strength, strength_score, price, w_pos, m_pos, signal_date, inv_level, inv_text "
-                f"FROM watchlist_intraday WHERE trade_date=? AND stage='signal' AND symbol IN ({ph})",
-                [today] + syms).fetchall()
+                f"FROM watchlist_intraday WHERE trade_date=? AND seq=? AND stage='signal' AND symbol IN ({ph})",
+                [today, last_seq] + syms).fetchall()
             arows = conn.execute(
                 f"SELECT symbol, signal_type, cond_level, cond_text, price "
-                f"FROM watchlist_intraday WHERE trade_date=? AND stage='alert' AND symbol IN ({ph})",
-                [today] + syms).fetchall()
+                f"FROM watchlist_intraday WHERE trade_date=? AND seq=? AND stage='alert' AND symbol IN ({ph})",
+                [today, last_seq] + syms).fetchall()
             items = [{"symbol": r[0], "type": r[1], "strength": r[2], "score": r[3], "price": r[4],
                       "status": "preview", "w_pos": r[5], "m_pos": r[6], "date": r[7],
                       "invLevel": r[8], "invText": r[9]} for r in srows]

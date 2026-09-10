@@ -207,6 +207,8 @@ export default function App() {
   const [wlSignals, setWlSignals] = useState<Record<string, WatchlistSignal>>({})
   // 自选"即将触发"预警(高频, 无信号时的候选): symbol→alert
   const [wlAlerts, setWlAlerts] = useState<Record<string, WatchlistAlert>>({})
+  // 自选行悬停卡片(结构化, 替代原生 title)
+  const [wlTip, setWlTip] = useState<{ sym: string; top: number; right: number } | null>(null)
   const [wlSigMode, setWlSigMode] = useState<'live' | 'close' | 'none'>('none')
   const [picks, setPicks] = useState<PickRecord[]>([])
   const [pickDates, setPickDates] = useState<{ date: string; total: number }[]>([])
@@ -1196,7 +1198,8 @@ export default function App() {
                 watchlist.map((item, idx) => (
                   <div key={item.symbol}
                     className={`watchlist-item ${currentStock?.symbol === item.symbol ? 'active' : ''} ${dragOverIdx === idx ? 'drag-over' : ''} ${(wlSignals[item.symbol] || wlAlerts[item.symbol]) ? 'with-sig' : ''}`}
-                    title={(wlSignals[item.symbol] && wlSignals[item.symbol]!.invText) || (wlAlerts[item.symbol] && wlAlerts[item.symbol]!.text) || undefined}
+                    onMouseEnter={e => { const r = e.currentTarget.getBoundingClientRect(); setWlTip({ sym: item.symbol, top: Math.max(8, Math.min(r.top, window.innerHeight - 130)), right: window.innerWidth - r.left + 10 }) }}
+                    onMouseLeave={() => setWlTip(null)}
                     draggable
                     onDragStart={e => handleDragStart(e, idx)}
                     onDragOver={e => handleDragOver(e, idx)}
@@ -1603,6 +1606,38 @@ export default function App() {
           )}
         </div>
       </div>
+      {wlTip && (() => {
+        const s = wlSignals[wlTip.sym]; const al = wlAlerts[wlTip.sym]
+        if (!s && !al) return null
+        return (
+          <div className="wl-tip" style={{ top: wlTip.top, right: wlTip.right }}>
+            {s ? (
+              <>
+                <div className="wl-tip-h">
+                  <span className={`wl-tip-type ${s.type.includes('买') ? 'buy' : 'sell'}`}>{s.type}</span>
+                  <span className="wl-tip-score">{Math.round(s.score)}分</span>
+                  {s.strength === 'strong' && <span className="wl-tip-str strong">强</span>}
+                  {s.strength === 'weak' && <span className="wl-tip-str weak">弱</span>}
+                  {s.status === 'preview' && <span className="wl-tip-str pv">未确认</span>}
+                </div>
+                {s.invText && (
+                  <div className="wl-tip-row"><span className="wl-tip-k">失效</span><span className="wl-tip-v">{s.invText}</span></div>
+                )}
+                {s.date && <div className="wl-tip-row"><span className="wl-tip-k">信号日</span><span className="wl-tip-v">{s.date}</span></div>}
+              </>
+            ) : (
+              <>
+                <div className="wl-tip-h">
+                  <span className="wl-tip-badge">即将触发</span>
+                  <span className={`wl-tip-type ${al!.type.includes('买') ? 'buy' : 'sell'}`}>{al!.type}</span>
+                </div>
+                <div className="wl-tip-row"><span className="wl-tip-v">{al!.text}</span></div>
+                {al!.price != null && <div className="wl-tip-row"><span className="wl-tip-k">现价</span><span className="wl-tip-v">{al!.price}</span></div>}
+              </>
+            )}
+          </div>
+        )
+      })()}
     </>
   )
 }

@@ -764,7 +764,7 @@ def find_buy_sell(bi, zs_list, trend, dif, merged, last_n_days):
     return res, chain, sell_chain
 
 
-def analyze(symbol, window_days=7, as_of=None, light=False, include_all=False):
+def analyze(symbol, window_days=7, as_of=None, light=False, include_all=False, extra_bar=None, with_internals=False):
     """完整缠论分析: window_days=信号检测窗口(交易日)
     as_of: 截断到该日期(含), 回放"当时"的缠论结构(动态中枢用)
     light: 只算结构/中枢(跳过MACD/买卖点), 动态中枢请求用"""
@@ -778,6 +778,12 @@ def analyze(symbol, window_days=7, as_of=None, light=False, include_all=False):
             "SELECT date, open, high, low, close, close_qfq, volume FROM stock_daily "
             "WHERE symbol=? AND close_qfq>0 ORDER BY date", (symbol,)).fetchall()
     conn.close()
+    # 盘中可塞入"今日bar"(extra_bar): 仅在日期>最后DB日时追加, 默认None=零影响
+    if extra_bar and (not rows or str(extra_bar.get("date", "")) > rows[-1][0]):
+        rows = list(rows) + [(extra_bar["date"], extra_bar.get("open", 0), extra_bar["high"],
+                              extra_bar["low"], extra_bar["close"],
+                              extra_bar.get("close_qfq") or extra_bar["close"],
+                              extra_bar.get("volume", 0))]
     if len(rows) < 150:
         return {"error": "数据不足"}
     qf_rows = []
@@ -862,7 +868,7 @@ def analyze(symbol, window_days=7, as_of=None, light=False, include_all=False):
             all_out = [{"time": t, "type": typ, "price": round(p, 2)} for typ, t, p, _, _ in all_sig_sorted]
         except Exception:
             all_out = []
-    return {
+    _out = {
         "all_signals": all_out,
         "symbol": symbol,
         "bars": len(rows),
@@ -879,6 +885,13 @@ def analyze(symbol, window_days=7, as_of=None, light=False, include_all=False):
         "cur_price": round(qf_rows[-1][3], 2),
         "cur_date": rows[-1][0],
     }
+    if with_internals:   # 供高频 near_miss 复用同一套计算(默认关, 不改变正式返回)
+        _out["_merged"] = merged
+        _out["_bi"] = bi
+        _out["_zs_list"] = zs_list
+        _out["_dif"] = dif
+        _out["_hist"] = hist
+    return _out
 
 if __name__ == "__main__":
     import json
