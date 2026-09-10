@@ -1060,7 +1060,7 @@ export default function App() {
                 <div style={{ height: `${boardSplit}%`, minHeight: 150, flexShrink: 0, paddingTop: 6, position: 'relative', order: 1 }}>
                   <div style={{ position: 'absolute', top: 8, right: 10, zIndex: 5, display: 'flex', gap: 6, alignItems: 'center' }}>
                     <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{currentStock.name} {currentStock.symbol}</span>
-                    {boardRanksTotal > 0 && (
+                    {(
                       <span
                         className="range-btn"
                         onClick={() => setShowBoardRanks(!showBoardRanks)}
@@ -1073,7 +1073,7 @@ export default function App() {
                       style={{ fontSize: 11, padding: '1px 8px', cursor: 'pointer' }}>关闭K线</button>
                   </div>
                   {/* 板块共振排名悬浮面板(概念+行业) */}
-                  {showBoardRanks && boardRanksTotal > 0 && (
+                  {showBoardRanks && (
                     <BoardRanksPanel name={currentStock.name} groups={boardRanksGroups} items={boardRanks ?? []}
                       total={boardRanksTotal} date={boardSel?.date || boardRanksDate || ''}
                       onClose={() => setShowBoardRanks(false)} />
@@ -1152,7 +1152,7 @@ export default function App() {
             />
             </ChartErrorBoundary>
             {/* 通用悬浮: 板块共振排名(所有tab), K线右上角 */}
-            {currentStock && boardRanksTotal > 0 && (
+            {currentStock && (
               <div style={{ position: 'absolute', top: 8, right: 10, zIndex: 15, display: 'flex', gap: 6, alignItems: 'flex-start', width: 'auto', height: 'auto' }}>
                 <span className="range-btn"
                   onClick={() => setShowBoardRanks(!showBoardRanks)}
@@ -1165,7 +1165,7 @@ export default function App() {
                 </span>
               </div>
             )}
-            {currentStock && showBoardRanks && boardRanksTotal > 0 && (
+            {currentStock && showBoardRanks && (
               <BoardRanksPanel name={currentStock.name} groups={boardRanksGroups} items={boardRanks ?? []}
                 total={boardRanksTotal} date={boardRanksDate} mySignals={boardRanksMySignals} onClose={() => setShowBoardRanks(false)} />
             )}
