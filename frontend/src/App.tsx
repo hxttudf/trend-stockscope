@@ -191,7 +191,10 @@ function BoardRanksPanel(props: {
               <span style={{ color: '#e6edf3' }}>{s.price}</span>
               <span style={{ color: '#e6edf3', fontWeight: 600 }}>{s.score}分</span>
               {t && <span style={{ color: t.c, fontWeight: 700 }}>{t.l}</span>}
-              <span style={{ color: 'var(--text-muted)' }}>{s.strength === 'strong' ? '强' : s.strength === 'weak' ? '弱' : '中'}</span>
+              <span style={{ fontSize: 10, borderRadius: 4, padding: '0 5px', fontWeight: 700,
+                ...(s.strength === 'strong' ? { color: '#3fb950', border: '1px solid #3fb950' }
+                  : s.strength === 'weak' ? { color: '#f85149', border: '1px solid #f85149' }
+                  : { color: 'var(--text-muted)' }) }}>{s.strength === 'strong' ? '强' : s.strength === 'weak' ? '弱' : '中'}</span>
             </div>
           )
         }) : <div style={{ color: 'var(--text-muted)' }}>该股当日无信号 · 仅板块背景</div>}
