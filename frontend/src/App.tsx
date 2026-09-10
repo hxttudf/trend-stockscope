@@ -108,11 +108,24 @@ function MarketBadge({ symbol }: { symbol: string }) {
 
 // ── 板块共振排名悬浮面板(概念/行业分组) ──
 const DIM_LABEL: Record<string, string> = { concept: '概念板块', industry: '行业板块', region: '地域板块' }
+// 高级别中枢位置 → 分层(周K/月K, 与主列表口径一致)
+function sigTier(type: string, wp: string, mp: string): { l: string; c: string } | null {
+  if (type.includes('买')) {
+    if (wp === '中枢下方' && (mp === '中枢下方' || mp === '中枢上方')) return { l: '★★★', c: '#ffd54d' }
+    if (wp === '中枢下方') return { l: '★★', c: '#e0a92e' }
+    if (mp === '中枢下方' || mp === '中枢上方') return { l: '★', c: '#b8860b' }
+  } else {
+    if (mp === '中枢上方' && wp === '中枢上方') return { l: '▼▼▼', c: '#7ec8ff' }
+    if (mp === '中枢上方') return { l: '▼▼', c: '#5a9ee6' }
+    if (wp === '中枢上方') return { l: '▼', c: '#3a6ea8' }
+  }
+  return null
+}
 function BoardRanksPanel(props: {
-  name: string; groups: any[] | null; items: any[]; total: number; date: string
+  name: string; groups: any[] | null; items: any[]; total: number; date: string; mySignals?: any[]
   onClose: () => void
 }) {
-  const { name, groups, items, total, date, onClose } = props
+  const { name, groups, items, total, date, mySignals, onClose } = props
   // 无groups时按单一概念组渲染(兼容旧数据)
   const showGroups = groups && groups.length > 0 ? groups : (items?.length ? [{ dimension: 'concept', items }] : [])
   // 可拖动: 标题栏mousedown拖拽, 位置state(初始=右上角); 记录容器尺寸防拖出
@@ -166,6 +179,22 @@ function BoardRanksPanel(props: {
           {items[0] && !items[0].has_my_signal && <span style={{ fontWeight: 400, color: '#f0883e' }}> · 该股当日无信号, 仅板块背景</span>}
         </span>
         <span className="range-btn" style={{ fontSize: 10, padding: '0 6px', cursor: 'pointer' }} onClick={onClose}>✕</span>
+      </div>
+      {/* 该股当日买卖点(共振面板追加: 类型/价格/分数/分层) */}
+      <div style={{ marginBottom: 6, paddingBottom: 6, borderBottom: '1px solid var(--border-subtle, rgba(240,246,252,0.08))' }}>
+        <div style={{ fontWeight: 600, color: '#e6edf3', marginBottom: 3 }}>该股当日买卖点 <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>({date})</span></div>
+        {mySignals && mySignals.length > 0 ? mySignals.map((s: any, i: number) => {
+          const t = sigTier(s.type, s.w_pos, s.m_pos)
+          return (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '2px 0' }}>
+              <span style={{ color: s.type.includes('买') ? '#f0883e' : '#58a6ff', fontWeight: 700 }}>{s.type}</span>
+              <span style={{ color: '#e6edf3' }}>{s.price}</span>
+              <span style={{ color: '#e6edf3', fontWeight: 600 }}>{s.score}分</span>
+              {t && <span style={{ color: t.c, fontWeight: 700 }}>{t.l}</span>}
+              <span style={{ color: 'var(--text-muted)' }}>{s.strength === 'strong' ? '强' : s.strength === 'weak' ? '弱' : '中'}</span>
+            </div>
+          )
+        }) : <div style={{ color: 'var(--text-muted)' }}>该股当日无信号 · 仅板块背景</div>}
       </div>
       {showGroups.map((g: any) => (
         <div key={g.dimension}>
@@ -238,6 +267,7 @@ export default function App() {
   const [boardRanksGroups, setBoardRanksGroups] = useState<any[] | null>(null)  // 概念+行业分组[{dimension, items}]
   const [boardRanksTotal, setBoardRanksTotal] = useState(0)  // 两维度合计板块数
   const [boardRanksDate, setBoardRanksDate] = useState('')  // 共振排名对应的信号日
+  const [boardRanksMySignals, setBoardRanksMySignals] = useState<any[]>([])  // 该股当日买卖点(共振面板追加)
   const [showBoardRanks, setShowBoardRanks] = useState(false)  // 悬浮面板显隐
   const [chanlunEtf, setChanlunEtf] = useState(false)  // 缠论tab: 只看ETF信号
   const [chanlunIndex, setChanlunIndex] = useState(false)  // 缠论tab: 只看指数信号
@@ -470,6 +500,7 @@ export default function App() {
         setBoardRanksGroups(r.groups || null)
         setBoardRanksTotal(r.total || 0)
         setBoardRanksDate(r.date || '')
+        setBoardRanksMySignals(r.my_signals || [])
         setShowBoardRanks(false)
       }).catch(() => { if (seq === loadSeq.current) { setBoardRanks(null); setBoardRanksGroups(null); setBoardRanksTotal(0) } })
   }, [qfq, selectedPickDate])
@@ -1136,7 +1167,7 @@ export default function App() {
             )}
             {currentStock && showBoardRanks && boardRanksTotal > 0 && (
               <BoardRanksPanel name={currentStock.name} groups={boardRanksGroups} items={boardRanks ?? []}
-                total={boardRanksTotal} date={boardRanksDate} onClose={() => setShowBoardRanks(false)} />
+                total={boardRanksTotal} date={boardRanksDate} mySignals={boardRanksMySignals} onClose={() => setShowBoardRanks(false)} />
             )}
             {(!currentStock || !kline) && (
               <div style={{
@@ -1611,7 +1642,7 @@ export default function App() {
         if (!s && !al) return null
         return (
           <div className="wl-tip" style={{ top: wlTip.top, right: wlTip.right }}>
-            {s ? (
+            {s && (
               <>
                 <div className="wl-tip-h">
                   <span className={`wl-tip-type ${s.type.includes('买') ? 'buy' : 'sell'}`}>{s.type}</span>
@@ -1625,14 +1656,16 @@ export default function App() {
                 )}
                 {s.date && <div className="wl-tip-row"><span className="wl-tip-k">信号日</span><span className="wl-tip-v">{s.date}</span></div>}
               </>
-            ) : (
+            )}
+            {s && al && <div className="wl-tip-sep" />}
+            {al && (
               <>
                 <div className="wl-tip-h">
                   <span className="wl-tip-badge">即将触发</span>
-                  <span className={`wl-tip-type ${al!.type.includes('买') ? 'buy' : 'sell'}`}>{al!.type}</span>
+                  <span className={`wl-tip-type ${al.type.includes('买') ? 'buy' : 'sell'}`}>{al.type}</span>
                 </div>
-                <div className="wl-tip-row"><span className="wl-tip-v">{al!.text}</span></div>
-                {al!.price != null && <div className="wl-tip-row"><span className="wl-tip-k">现价</span><span className="wl-tip-v">{al!.price}</span></div>}
+                <div className="wl-tip-row"><span className="wl-tip-v">{al.text}</span></div>
+                {al.price != null && <div className="wl-tip-row"><span className="wl-tip-k">现价</span><span className="wl-tip-v">{al.price}</span></div>}
               </>
             )}
           </div>

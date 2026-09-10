@@ -424,6 +424,7 @@ body {
 .wl-tip-row { display: flex; gap: 7px; margin-top: 4px; }
 .wl-tip-k { color: #8b949e; flex-shrink: 0; }
 .wl-tip-v { color: #e6edf3; }
+.wl-tip-sep { height: 1px; background: #30363d; margin: 8px -12px 7px; }
 
 .watchlist-item .wl-remove {
   position: absolute;

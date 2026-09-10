@@ -307,6 +307,10 @@ def get_watchlist_signals():
         return jsonify({"items": [], "alerts": [], "mode": "none", "source": "none"})
     ph = ",".join("?" * len(syms))
     today = time.strftime("%Y-%m-%d")
+    # "当天计算出的"参照日 = 全市场最新信号日 ok_sd; 用 confirmed_date 判(滚动 as-of, 无未来函数)
+    # 注意: 参照用 MAX(signal_date) 而非 MAX(confirmed_date) — 后者含个别回填残留(跨年 confirmed_date)
+    ok_sd = conn.execute(
+        "SELECT MAX(signal_date) FROM chanlun_signals WHERE status='ok' AND category!='index'").fetchone()[0]
     try:
         # ① 高频表优先(盘中): 今日有重算 且 updated_at 在 35 分钟内
         hf_latest = conn.execute(
@@ -333,6 +337,17 @@ def get_watchlist_signals():
                       "status": "preview", "w_pos": r[5], "m_pos": r[6], "date": r[7],
                       "invLevel": r[8], "invText": r[9]} for r in srows]
             alerts = [{"symbol": r[0], "type": r[1], "level": r[2], "text": r[3], "price": r[4]} for r in arows]
+            # 高频表只是盘中缓存, 不得遮蔽正式表: hf未覆盖的自选股(刚加入/尚未重算)→ 补各自最新正式信号
+            covered = {r[0] for r in srows}
+            miss = [s for s in syms if s not in covered]
+            if miss:
+                mph = ",".join("?" * len(miss))
+                frows = conn.execute(
+                    f"SELECT symbol, signal_type, strength, strength_score, price, w_pos, m_pos, signal_date "
+                    f"FROM chanlun_signals WHERE status='ok' AND category!='index' AND confirmed_date=? AND symbol IN ({mph})",
+                    [ok_sd] + miss).fetchall()
+                items += [{"symbol": f[0], "type": f[1], "strength": f[2], "score": f[3], "price": f[4],
+                           "status": "ok", "w_pos": f[5], "m_pos": f[6], "date": f[7]} for f in frows]
             return jsonify({"items": items, "alerts": alerts, "mode": "live", "source": "hf",
                             "date": (srows[0][7] if srows else "")})
         # ② 回退: preview最新批次(盘中未定稿) / 正式表(定稿)
@@ -352,9 +367,10 @@ def get_watchlist_signals():
             if rows:
                 mode, source = "live", "preview"
         if not rows:
+            # 当天计算出的正式信号: 确认日=最新确认日(ok_sd); 天然含"延后/事后"(confirmed_later=1)
             rows = conn.execute(
                 f"SELECT symbol, signal_type, strength, strength_score, price, status, w_pos, m_pos, signal_date "
-                f"FROM chanlun_signals WHERE signal_date=? AND status='ok' AND symbol IN ({ph}) AND category!='index'",
+                f"FROM chanlun_signals WHERE confirmed_date=? AND status='ok' AND symbol IN ({ph}) AND category!='index'",
                 [ok_sd] + syms).fetchall()
         items = [{"symbol": r[0], "type": r[1], "strength": r[2], "score": r[3], "price": r[4],
                   "status": r[5], "w_pos": r[6], "m_pos": r[7], "date": r[8]} for r in rows]
@@ -1380,8 +1396,12 @@ def api_board_ranks():
             "SELECT symbol, signal_type, strength FROM chanlun_signals "
             "WHERE signal_date=? AND status='ok' AND category!='index'", (date,)).fetchall()
         # 该股当日自身信号(一次查出, 各维度共用)
-        my_sig_types = [r[0] for r in conn.execute(
-            "SELECT signal_type FROM chanlun_signals WHERE symbol=? AND signal_date=? AND status='ok'", (symbol, date)).fetchall()]
+        my_rows = conn.execute(
+            "SELECT signal_type, price, strength, strength_score, w_pos, m_pos FROM chanlun_signals "
+            "WHERE symbol=? AND signal_date=? AND status='ok' ORDER BY rowid", (symbol, date)).fetchall()
+        my_sig_types = [r[0] for r in my_rows]
+        my_signals = [{"type": r[0], "price": r[1], "strength": r[2], "score": r[3],
+                       "w_pos": r[4], "m_pos": r[5]} for r in my_rows]
         dims = ["industry", "concept", "region"] if dimension == "all" else [dimension]
         groups = []
         for dim in dims:
@@ -1436,7 +1456,7 @@ def api_board_ranks():
         n_all = sum(len(g["items"]) for g in groups)
         first_items = groups[0]["items"] if groups else []
         return jsonify({"items": first_items, "groups": groups, "symbol": symbol, "date": date,
-                        "dimension": dimension, "total": n_all})
+                        "dimension": dimension, "total": n_all, "my_signals": my_signals})
     finally:
         conn.close()
         ccon.close()
