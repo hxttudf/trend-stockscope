@@ -307,6 +307,8 @@ def get_watchlist_signals():
         return jsonify({"items": [], "alerts": [], "mode": "none", "source": "none"})
     ph = ",".join("?" * len(syms))
     today = time.strftime("%Y-%m-%d")
+    # 盘后(≥15:00): 盘中预信号可能已被收盘价推翻 → 信号只认正式表(预警保留)
+    after_close = time.strftime("%H:%M") >= "15:00"
     # "当天计算出的"参照: ① 信号日=全市场最新信号日 ok_sd; ② 今天才算出来的更老信号(confirmed_date=今天)
     # 注意: 参照用 MAX(signal_date) 而非 MAX(confirmed_date) — 后者含个别回填残留(跨年 confirmed_date)
     ok_sd = conn.execute(
@@ -333,6 +335,9 @@ def get_watchlist_signals():
                 f"SELECT symbol, signal_type, cond_level, cond_text, price "
                 f"FROM watchlist_intraday WHERE trade_date=? AND seq=? AND stage='alert' AND symbol IN ({ph})",
                 [today, last_seq] + syms).fetchall()
+            # 盘后: 盘中算出的信号可能已被收盘价推翻 → 信号不认高频表(只认正式表, 由下面 miss 分支补齐); 预警仍保留
+            if after_close:
+                srows = []
             items = [{"symbol": r[0], "type": r[1], "strength": r[2], "score": r[3], "price": r[4],
                       "status": ("preview" if r[7] == today else "ok"), "w_pos": r[5], "m_pos": r[6], "date": r[7],
                       "invLevel": r[8], "invText": r[9]} for r in srows]
@@ -359,7 +364,7 @@ def get_watchlist_signals():
         pv_bd, pv_seq, pv_sd = pv
         ok_sd = conn.execute("SELECT MAX(signal_date) FROM chanlun_signals WHERE status='ok'").fetchone()[0]
         rows = None
-        if pv_sd and pv_bd == today and (not ok_sd or pv_sd > ok_sd):
+        if (not after_close) and pv_sd and pv_bd == today and (not ok_sd or pv_sd > ok_sd):
             rows = conn.execute(
                 f"SELECT symbol, signal_type, strength, strength_score, price, status, w_pos, m_pos, signal_date "
                 f"FROM preview_signals WHERE batch_date=? AND batch_seq=? AND signal_date=? AND status='preview' "
