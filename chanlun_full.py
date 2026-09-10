@@ -492,10 +492,11 @@ def calc_sell_score_v2(typ, closes, highs, lows, vols, i, ref_zd, ref_zg, dif_hi
     return round(max(0.0, min(100.0, s)), 1)
 
 
-def find_sells_v2(bi, zs_list, dif, merged, max_gap=60, amp_lim=2.0):
+def find_sells_v2(bi, zs_list, dif, merged, max_gap=60, amp_lim=2.0, asof_fix=False):
     """卖出判定v2(缠论趋势定义): 一卖=趋势背驰(≥2个依次抬高的不重叠中枢z2.zd>z1.zg
     + 顶在上方中枢ZG之上 + MACD面积衰竭); 二卖=一卖后次级别顶不创新高(锚定真一卖);
     三卖=同v1(破位反抽不回中枢, 已忠实原文)
+    asof_fix=False(默认, =旧v2行为); True(=v3) 修 471/474 的"笔下标当merged下标"缺陷, 消除未来函数。
     返回 [(type, date, price, ref_zd, ref_zg), ...]; 一卖/二卖的锚=趋势约束的上方中枢(当时快照)"""
     area = macd_area_pref(dif)
     out = []
@@ -513,10 +514,14 @@ def find_sells_v2(bi, zs_list, dif, merged, max_gap=60, amp_lim=2.0):
         anchor = None
         for k in range(len(zs_list) - 1, 0, -1):
             z2 = zs_list[k]
-            if merged[z2["bi_end"]][0] > merged[p3[0]][0]:
+            # asof_fix: bi_end 是【笔】下标, 须经 bi[] 转成"合并K线下标"再索引 merged;
+            # 旧写法把笔下标(≈120)当merged下标(≈900) → 日期恒偏早 → 守卫失效 → 锚到未来中枢(未来函数)
+            _b2 = merged[bi[z2["bi_end"]][0]][0] if asof_fix else merged[z2["bi_end"]][0]
+            if _b2 > merged[p3[0]][0]:
                 continue  # 中枢须在背驰顶之前完结
             z1 = zs_list[k - 1]
-            if merged[z1["bi_end"]][0] > merged[p1[0]][0]:
+            _b1 = merged[bi[z1["bi_end"]][0]][0] if asof_fix else merged[z1["bi_end"]][0]
+            if _b1 > merged[p1[0]][0]:
                 continue
             if z2["zd"] > z1["zg"] and p3[2] > z2["zg"]:
                 ok = True
@@ -597,10 +602,11 @@ def find_all_signals(bi, zs_list, dif, merged, max_gap=60, amp_lim=2.0, sell_ver
                     break
 
     # ── 一卖/二卖 ──
-    if sell_ver == 'v2':
-        # v2(缠论趋势定义): 一卖=趋势背驰(≥2个依次抬高的不重叠中枢+顶在中枢上方+面积衰竭),
-        # 二卖锚定真一卖; 三卖不动. v1候选中同日信号以v2为准(v2剔除盘整背驰误报=判定回测+1.2pct)
-        for t, d, p, zd, zg in find_sells_v2(bi, zs_list, dif, merged, max_gap, amp_lim):
+    if sell_ver in ('v2', 'v3'):
+        # v2(缠论趋势定义): 一卖=趋势背驰(≥2个依次抬高的不重叠中枢+顶在中枢上方+面积衰竭), 二卖锚定真一卖; 三卖不动.
+        # v3 = v2 + asof_fix(修 笔下标当merged下标 → 消除"锚到未来中枢"的未来函数). v2 保持旧行为可回退。
+        for t, d, p, zd, zg in find_sells_v2(bi, zs_list, dif, merged, max_gap, amp_lim,
+                                             asof_fix=(sell_ver == 'v3')):
             out.append((t, d, p, zd, zg))
     else:
         for i in range(2, len(tops)):
