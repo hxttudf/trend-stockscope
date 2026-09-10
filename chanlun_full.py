@@ -492,7 +492,7 @@ def calc_sell_score_v2(typ, closes, highs, lows, vols, i, ref_zd, ref_zg, dif_hi
     return round(max(0.0, min(100.0, s)), 1)
 
 
-def find_sells_v2(bi, zs_list, dif, merged, max_gap=60, amp_lim=2.0, asof_fix=False):
+def find_sells_v2(bi, zs_list, dif, merged, max_gap=60, amp_lim=2.0, asof_fix=False, emit_sansell=True):
     """卖出判定v2(缠论趋势定义): 一卖=趋势背驰(≥2个依次抬高的不重叠中枢z2.zd>z1.zg
     + 顶在上方中枢ZG之上 + MACD面积衰竭); 二卖=一卖后次级别顶不创新高(锚定真一卖);
     三卖=同v1(破位反抽不回中枢, 已忠实原文)
@@ -536,8 +536,8 @@ def find_sells_v2(bi, zs_list, dif, merged, max_gap=60, amp_lim=2.0, asof_fix=Fa
                         out.append(("二卖", merged[tops[j][0]][0], round(tops[j][2], 2),
                                     round(anchor["zd"], 2), round(anchor["zg"], 2)))
                     break
-    # ── 三卖: 同v1 ──
-    for zs in zs_list:
+    # ── 三卖: 同v1 (emit_sansell=False 时不在此发, 交给 find_all_signals 的三卖段, 避免v2/v3重复) ──
+    for zs in (zs_list if emit_sansell else []):
         for t in tops:
             t_idx = bi.index(t)
             if t_idx <= zs["bi_end"]:
@@ -606,7 +606,8 @@ def find_all_signals(bi, zs_list, dif, merged, max_gap=60, amp_lim=2.0, sell_ver
         # v2(缠论趋势定义): 一卖=趋势背驰(≥2个依次抬高的不重叠中枢+顶在中枢上方+面积衰竭), 二卖锚定真一卖; 三卖不动.
         # v3 = v2 + asof_fix(修 笔下标当merged下标 → 消除"锚到未来中枢"的未来函数). v2 保持旧行为可回退。
         for t, d, p, zd, zg in find_sells_v2(bi, zs_list, dif, merged, max_gap, amp_lim,
-                                             asof_fix=(sell_ver == 'v3')):
+                                             asof_fix=(sell_ver == 'v3'),
+                                             emit_sansell=(sell_ver != 'v3')):
             out.append((t, d, p, zd, zg))
     else:
         for i in range(2, len(tops)):
