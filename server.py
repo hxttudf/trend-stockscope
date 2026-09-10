@@ -334,7 +334,7 @@ def get_watchlist_signals():
                 f"FROM watchlist_intraday WHERE trade_date=? AND seq=? AND stage='alert' AND symbol IN ({ph})",
                 [today, last_seq] + syms).fetchall()
             items = [{"symbol": r[0], "type": r[1], "strength": r[2], "score": r[3], "price": r[4],
-                      "status": "preview", "w_pos": r[5], "m_pos": r[6], "date": r[7],
+                      "status": ("preview" if r[7] == today else "ok"), "w_pos": r[5], "m_pos": r[6], "date": r[7],
                       "invLevel": r[8], "invText": r[9]} for r in srows]
             alerts = [{"symbol": r[0], "type": r[1], "level": r[2], "text": r[3], "price": r[4]} for r in arows]
             # 高频表只是盘中缓存, 不得遮蔽正式表: hf未覆盖的自选股(刚加入/尚未重算)→ 补各自最新正式信号
