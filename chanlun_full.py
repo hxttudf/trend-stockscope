@@ -555,7 +555,7 @@ def find_sells_v2(bi, zs_list, dif, merged, max_gap=60, amp_lim=2.0, asof_fix=Fa
     return out
 
 
-def find_all_signals(bi, zs_list, dif, merged, max_gap=60, amp_lim=2.0, sell_ver='v2'):
+def find_all_signals(bi, zs_list, dif, merged, max_gap=60, amp_lim=2.0, sell_ver='v3'):
     """全历史买卖点检测(落DB用)
     买点: 一买(创新低+背驰) → 二买(一买后回调不创新低) → 三买(中枢突破后回抽不进)
     卖点: 对称
